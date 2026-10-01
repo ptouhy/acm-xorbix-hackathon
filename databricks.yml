@@ -1,0 +1,79 @@
+# Databricks Asset Bundle — Free Edition (serverless)
+# Deploy: databricks bundle validate && databricks bundle deploy -t dev
+
+bundle:
+  name: acm-xorbix-hackathon
+
+workspace:
+  host: ${var.databricks_host}
+
+variables:
+  databricks_host:
+    description: Free Edition workspace URL (e.g. https://dbc-xxx.cloud.databricks.com)
+    default: https://YOUR-WORKSPACE.cloud.databricks.com
+  catalog:
+    default: main
+  schema:
+    default: clinic_hackathon
+
+artifacts:
+  clinic_agent_wheel:
+    type: whl
+    build: python -m build --wheel --outdir dist
+
+resources:
+  jobs:
+    clinic_agent_pipeline:
+      name: "[${bundle.target}] Clinic Growth Agent"
+      max_concurrent_runs: 1
+      environments:
+        - environment_key: Default
+          spec:
+            environment_version: "3"
+      tasks:
+        - task_key: setup_catalog
+          notebook_task:
+            notebook_path: ./notebooks/00_setup_catalog.py
+            base_parameters:
+              catalog: ${var.catalog}
+              schema: ${var.schema}
+          environment_key: Default
+
+        - task_key: ingest_sample_data
+          depends_on:
+            - task_key: setup_catalog
+          notebook_task:
+            notebook_path: ./notebooks/01_ingest_sample_data.py
+            base_parameters:
+              catalog: ${var.catalog}
+              schema: ${var.schema}
+          environment_key: Default
+
+        - task_key: run_agent
+          depends_on:
+            - task_key: ingest_sample_data
+          notebook_task:
+            notebook_path: ./notebooks/02_run_agent.py
+            base_parameters:
+              question: "Which patients are at risk of dropping off and what should we do?"
+              use_model: "false"
+          environment_key: Default
+
+  experiments:
+    clinic_agent:
+      name: /Shared/${bundle.name}/clinic_growth_agent
+      tags:
+        hackathon: acm-xorbix-2026
+
+sync:
+  include:
+    - config/**
+    - notebooks/**
+    - src/**
+
+targets:
+  dev:
+    mode: development
+    default: true
+    workspace:
+      root_path: /Users/${workspace.current_user.userName}/.bundle/${bundle.name}/${bundle.target}
