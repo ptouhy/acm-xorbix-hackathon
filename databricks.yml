@@ -39,7 +39,7 @@ resources:
 
   experiments:
     revenue_briefing:
-      name: /Shared/${bundle.name}/revenue_briefing_agent
+      name: /Users/${workspace.current_user.userName}/${bundle.name}/revenue_briefing_agent
 
 sync:
   include:

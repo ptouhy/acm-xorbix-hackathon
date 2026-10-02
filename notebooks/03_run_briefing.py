@@ -94,14 +94,21 @@ display(summary)  # noqa: F821
 
 import mlflow
 
-mlflow.set_experiment("/Shared/acm-xorbix-hackathon/revenue_briefing_agent")
-with mlflow.start_run(run_name="daily_briefing"):
-    mlflow.log_param("question", question)
-    mlflow.log_param("catalog", catalog)
-    mlflow.log_param("schema", schema)
-    mlflow.log_metric("total_estimated_impact_usd", result.total_estimated_impact_usd)
-    mlflow.log_param("tools_used", [t["tool"] for t in result.tool_outputs])
-    mlflow.log_text(result.briefing_text, "briefing.md")
-    mlflow.log_dict({"actions": result.actions}, "actions.json")
+# Free Edition: /Shared/... often doesn't exist — use your user folder instead
+user = dbutils.notebook.entry_point.getDbutils().notebook().getContext().userName().get()
+experiment_path = f"/Users/{user}/acm-xorbix-hackathon/revenue_briefing_agent"
 
-print("Logged to MLflow experiment: /Shared/acm-xorbix-hackathon/revenue_briefing_agent")
+try:
+    mlflow.set_experiment(experiment_path)
+    with mlflow.start_run(run_name="daily_briefing"):
+        mlflow.log_param("question", question)
+        mlflow.log_param("catalog", catalog)
+        mlflow.log_param("schema", schema)
+        mlflow.log_metric("total_estimated_impact_usd", result.total_estimated_impact_usd)
+        mlflow.log_param("tools_used", [t["tool"] for t in result.tool_outputs])
+        mlflow.log_text(result.briefing_text, "briefing.md")
+        mlflow.log_dict({"actions": result.actions}, "actions.json")
+    print(f"Logged to MLflow: {experiment_path}")
+except Exception as exc:
+    print(f"MLflow logging skipped (non-fatal): {exc}")
+    print("Your briefing above is still valid — this cell is optional for the demo.")
