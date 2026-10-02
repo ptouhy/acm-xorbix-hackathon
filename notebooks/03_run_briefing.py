@@ -94,9 +94,9 @@ display(summary)  # noqa: F821
 
 import mlflow
 
-# Free Edition: /Shared/... often doesn't exist — use your user folder instead
+# Free Edition: use flat path under your user folder (no extra subfolders needed)
 user = dbutils.notebook.entry_point.getDbutils().notebook().getContext().userName().get()
-experiment_path = f"/Users/{user}/acm-xorbix-hackathon/revenue_briefing_agent"
+experiment_path = f"/Users/{user}/revenue_briefing_agent"
 
 try:
     mlflow.set_experiment(experiment_path)
