@@ -1,37 +1,72 @@
-# ACM x Xorbix × UIowa Hackathon 2026
+# Revenue Briefing Agent — ACM x Xorbix × UIowa Hackathon 2026
 
-**Fresh start.** This repo is intentionally empty so we can build it step by step and understand every piece.
+**One question. Four tools. Ranked actions with $ impact.**
 
-## The challenge (short version)
+Agentic AI on **Databricks Free Edition** for a chiropractic clinic — covers **leads**, **retention**, and **pricing** in one daily briefing.
 
-Build an **agentic AI solution on Databricks Free Edition** for a chiropractic clinic that wants to grow revenue. Use **synthetic data only** (no real patient info). Deploy with a **Databricks Asset Bundle (DAB)**. Code lives in a **public GitHub repo**.
+**Repo:** https://github.com/ptouhy/acm-xorbix-hackathon
 
-## What we will build (in order)
+---
 
-We will add these one at a time — only when you're ready for each step:
+## Quick demo (Databricks)
 
-1. **Databricks workspace** — Free Edition account + synthetic data tables → see [docs/STEP1.md](docs/STEP1.md)
-2. **Understand the data** — 8 tables (patients, leads, visits, etc.) → see [docs/STEP2.md](docs/STEP2.md)
-3. **One simple notebook** — query the data, no agent yet
-4. **Agent tools** — Python functions that analyze leads / retention / pricing
-5. **Agent orchestrator** — picks tools, returns recommendations
-6. **DAB config** — deploy notebook + job to any workspace
-7. **Demo + 2-min pitch**
+1. **Repos → Pull** latest
+2. Open `notebooks/03_run_briefing.py`
+3. Run all cells (pip → restart → agent runs)
 
-## Links
+Default question: *"What should we focus on today to maximize revenue?"*
 
-- Repo: https://github.com/ptouhy/acm-xorbix-hackathon
-- Databricks Free Edition: https://www.databricks.com/learn/free-edition
+---
+
+## Progress checklist
+
+- [x] Step 1 — `notebooks/generate_synthetic_data.py` → 8 UC tables
+- [x] Step 2 — `notebooks/02_explore_data.py` → understand the data
+- [x] Step 3–5 — **Revenue Briefing Agent** (this build)
+
+---
+
+## Project layout
+
+```
+config/settings.yaml       # Catalog, thresholds, $ assumptions (no secrets)
+agent/
+  tools.py                 # 4 Spark SQL tools (leads / retention / pricing)
+  briefing.py              # Orchestrator — runs tools, ranks, formats
+notebooks/
+  generate_synthetic_data.py
+  02_explore_data.py
+  03_run_briefing.py       # ← main demo
+databricks.yml             # DAB — deploy job + MLflow experiment
+docs/HOW_IT_WORKS.md       # Architecture explained
+docs/PITCH.md              # 2-minute pitch script
+tests/                     # pytest for ranking logic
+```
+
+---
+
+## Deploy (DAB)
+
+```bash
+databricks auth login --host https://YOUR-WORKSPACE.cloud.databricks.com
+databricks bundle validate
+databricks bundle deploy -t dev
+databricks bundle run revenue_briefing -t dev
+```
+
+Edit `catalog` / `schema` in `config/settings.yaml` or `databricks.yml` variables.
+
+---
+
+## Local tests
+
+```bash
+pip install pyyaml pytest
+pytest
+```
+
+---
 
 ## Team
 
 Patrick + Tommy
-
----
-
-## Progress
-
-- [x] **Step 1** — synthetic data in `workspace.chiro_hackathon` ✓
-- [ ] **Step 2** — run `notebooks/02_explore_data.py` (SQL only, no imports)
-- [ ] Step 3 — first agent tool
-- [ ] Step 4+ — agent, DAB, demo

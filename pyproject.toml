@@ -1,0 +1,13 @@
+[project]
+name = "revenue-briefing-agent"
+version = "1.0.0"
+description = "ACM x Xorbix hackathon — Revenue Briefing Agent"
+requires-python = ">=3.10"
+dependencies = ["pyyaml>=6.0"]
+
+[project.optional-dependencies]
+dev = ["pytest>=8.0"]
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
+testpaths = ["tests"]

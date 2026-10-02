@@ -1,0 +1,55 @@
+# Databricks Asset Bundle — deploy with:
+#   databricks bundle validate
+#   databricks bundle deploy -t dev
+#   databricks bundle run revenue_briefing -t dev
+
+bundle:
+  name: acm-xorbix-hackathon
+
+workspace:
+  host: ${var.databricks_host}
+
+variables:
+  databricks_host:
+    description: Your Free Edition workspace URL
+    default: https://dbc-1ee896cd-3f9f.cloud.databricks.com
+  catalog:
+    default: workspace
+  schema:
+    default: chiro_hackathon
+
+resources:
+  jobs:
+    revenue_briefing:
+      name: "[${bundle.target}] Revenue Briefing Agent"
+      max_concurrent_runs: 1
+      environments:
+        - environment_key: Default
+          spec:
+            environment_version: "3"
+      tasks:
+        - task_key: run_briefing
+          notebook_task:
+            notebook_path: ./notebooks/03_run_briefing.py
+            base_parameters:
+              catalog: ${var.catalog}
+              schema: ${var.schema}
+              question: "What should we focus on today to maximize revenue?"
+          environment_key: Default
+
+  experiments:
+    revenue_briefing:
+      name: /Shared/${bundle.name}/revenue_briefing_agent
+
+sync:
+  include:
+    - agent/**
+    - config/**
+    - notebooks/**
+
+targets:
+  dev:
+    mode: development
+    default: true
+    workspace:
+      root_path: /Users/${workspace.current_user.userName}/.bundle/${bundle.name}/${bundle.target}

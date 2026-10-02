@@ -1,0 +1,21 @@
+# Clinic + agent settings — change here, not in code.
+
+catalog: workspace
+schema: chiro_hackathon
+
+# Rough $ estimates for demo impact (synthetic clinic benchmarks)
+economics:
+  avg_initial_eval_revenue: 150
+  avg_visit_revenue: 75
+  avg_recoverable_visits_per_reengaged_patient: 4
+  churn_reengagement_rate: 0.25
+  lead_conversion_rate: 0.20
+
+thresholds:
+  stale_lead_days: 3
+  high_churn_risk: 0.75
+  slow_response_hours: 24
+
+agent:
+  name: Revenue Briefing Agent
+  default_question: "What should we focus on today to maximize revenue?"
