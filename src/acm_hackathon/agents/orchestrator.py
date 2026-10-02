@@ -24,11 +24,11 @@ class AgentResponse:
 # Keyword routing for local/demo runs without a live LLM endpoint
 _TOOL_HINTS: dict[str, list[str]] = {
     "analyze_lead_pipeline": ["lead", "funnel", "convert", "pipeline", "source"],
-    "score_lead_quality": ["score", "rank", "quality", "prospect"],
-    "identify_at_risk_patients": ["retention", "churn", "drop", "inactive", "at risk", "risk"],
-    "care_plan_completion_summary": ["care plan", "completion", "adherence"],
-    "analyze_service_margins": ["margin", "pricing", "price", "profit", "revenue"],
-    "recommend_membership_offers": ["membership", "package", "bundle", "plan"],
+    "score_lead_quality": ["score", "rank", "quality", "prospect", "prioritize"],
+    "identify_at_risk_patients": ["retention", "churn", "drop", "inactive", "at risk", "risk", "lapsed"],
+    "appointment_attendance_summary": ["no-show", "no show", "cancel", "attendance", "appointment"],
+    "analyze_visit_revenue": ["margin", "pricing", "price", "profit", "revenue", "service"],
+    "analyze_marketing_roi": ["marketing", "campaign", "roi", "budget", "acquisition", "ads"],
 }
 
 

@@ -1,13 +1,13 @@
-# Databricks / Unity Catalog targets — referenced by notebooks and DAB.
-catalog: main
-schema: clinic_hackathon
+# Databricks / Unity Catalog — matches generate_synthetic_data notebook output.
+catalog: workspace
+schema: chiro_hackathon
 
 tables:
+  locations: locations
+  providers: providers
   patients: patients
-  appointments: appointments
-  care_plans: care_plans
   leads: leads
-  service_pricing: service_pricing
-
-volumes:
-  sample_data: sample_data
+  appointments: appointments
+  visits: visits
+  referrals: referrals
+  marketing_campaigns: marketing_campaigns

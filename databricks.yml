@@ -10,16 +10,13 @@ workspace:
 variables:
   databricks_host:
     description: Free Edition workspace URL (e.g. https://dbc-xxx.cloud.databricks.com)
-    default: https://YOUR-WORKSPACE.cloud.databricks.com
+    default: https://dbc-1ee896cd-3f9f.cloud.databricks.com
   catalog:
-    default: main
+    description: Unity Catalog name (run SHOW CATALOGS — often "workspace" on Free Edition)
+    default: workspace
   schema:
-    default: clinic_hackathon
-
-artifacts:
-  clinic_agent_wheel:
-    type: whl
-    build: python -m build --wheel --outdir dist
+    description: Schema created by generate_synthetic_data notebook
+    default: chiro_hackathon
 
 resources:
   jobs:
@@ -31,31 +28,13 @@ resources:
           spec:
             environment_version: "3"
       tasks:
-        - task_key: setup_catalog
-          notebook_task:
-            notebook_path: ./notebooks/00_setup_catalog.py
-            base_parameters:
-              catalog: ${var.catalog}
-              schema: ${var.schema}
-          environment_key: Default
-
-        - task_key: ingest_sample_data
-          depends_on:
-            - task_key: setup_catalog
-          notebook_task:
-            notebook_path: ./notebooks/01_ingest_sample_data.py
-            base_parameters:
-              catalog: ${var.catalog}
-              schema: ${var.schema}
-          environment_key: Default
-
         - task_key: run_agent
-          depends_on:
-            - task_key: ingest_sample_data
           notebook_task:
             notebook_path: ./notebooks/02_run_agent.py
             base_parameters:
-              question: "Which patients are at risk of dropping off and what should we do?"
+              catalog: ${var.catalog}
+              schema: ${var.schema}
+              question: "Which patients are at risk of dropping off and what revenue can we recover?"
               use_model: "false"
           environment_key: Default
 
@@ -63,7 +42,7 @@ resources:
     clinic_agent:
       name: /Shared/${bundle.name}/clinic_growth_agent
       tags:
-        hackathon: acm-xorbix-2026
+        hackathon: xorbix-uiowa-2026
 
 sync:
   include:

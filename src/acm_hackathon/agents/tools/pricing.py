@@ -1,4 +1,4 @@
-"""Pricing, packages, and membership optimization tools."""
+"""Pricing and package optimization — official chiro_hackathon.visits schema."""
 
 from __future__ import annotations
 
@@ -7,76 +7,93 @@ import pandas as pd
 from acm_hackathon.agents.tools.base import ToolDefinition
 
 
-def analyze_service_margins(service_pricing: pd.DataFrame) -> dict:
-    """Identify high-volume / low-margin services for pricing adjustments."""
-    df = service_pricing.copy()
-    df["profit_per_visit"] = df["price"] * df["margin_pct"]
-    df["monthly_profit"] = df["profit_per_visit"] * df["monthly_volume"]
-    low_margin_high_vol = df[(df["margin_pct"] < 0.55) & (df["monthly_volume"] >= 40)]
+def analyze_visit_revenue(visit_summary: pd.DataFrame) -> dict:
+    """Identify high-volume services and revenue mix opportunities."""
+    df = visit_summary.copy()
+    by_service = (
+        df.groupby("service_type")
+        .agg(visit_count=("visit_count", "sum"), total_revenue=("total_revenue", "sum"))
+        .reset_index()
+    )
+    by_service["avg_revenue"] = by_service["total_revenue"] / by_service["visit_count"]
+    by_service = by_service.sort_values("total_revenue", ascending=False)
+
+    package_share = (
+        df.groupby("payment_type")["visit_count"].sum() / df["visit_count"].sum()
+    ).to_dict()
 
     recommendations = []
-    for row in low_margin_high_vol.itertuples():
+    top = by_service.iloc[0]
+    recommendations.append(
+        f"Top revenue driver: {top['service_type']} (${top['total_revenue']:,.0f} total)."
+    )
+    pkg_pct = package_share.get("Package Plan", 0)
+    if pkg_pct < 0.25:
         recommendations.append(
-            f"Review {row.service_name}: ${row.price:.0f} at {row.margin_pct:.0%} margin, "
-            f"{row.monthly_volume} visits/mo — consider +5–10% or bundle into membership."
+            f"Only {pkg_pct:.1%} of visits use Package Plan — upsell memberships at visit 3+."
         )
-    if not recommendations:
-        recommendations.append("Margins look healthy; test membership upsell on high-LTV patients.")
+    else:
+        recommendations.append(
+            f"Package Plan is {pkg_pct:.1%} of visits — test premium tier for high-LTV patients."
+        )
 
     return {
         "focus_area": "pricing",
-        "services": df.sort_values("monthly_profit", ascending=False).to_dict(orient="records"),
+        "by_service": by_service.to_dict(orient="records"),
+        "payment_type_mix": package_share,
         "recommendations": recommendations,
     }
 
 
-def recommend_membership_offers(
-    service_pricing: pd.DataFrame,
-    memberships: list[dict],
-) -> dict:
-    """Compare à la carte vs membership value for common visit patterns."""
-    adj = service_pricing[service_pricing["service_id"] == "adjustment"].iloc[0]
-    per_visit = float(adj["price"])
-    offers = []
-    for m in memberships:
-        per_visit_pkg = m["price"] / m["visits"]
-        savings = per_visit - per_visit_pkg
-        offers.append(
-            {
-                "membership_id": m["id"],
-                "name": m["name"],
-                "price": m["price"],
-                "effective_per_visit": round(per_visit_pkg, 2),
-                "savings_vs_single": round(savings, 2),
-            }
+def analyze_marketing_roi(marketing_campaigns: pd.DataFrame) -> dict:
+    """Find best/worst campaign channels by cost per conversion."""
+    df = marketing_campaigns.copy()
+    df["cost_per_lead"] = df["budget"] / df["leads_generated"].clip(lower=1)
+    df["cost_per_conversion"] = df["budget"] / df["conversions"].clip(lower=1)
+    df["conversion_rate"] = df["conversions"] / df["leads_generated"].clip(lower=1)
+
+    by_channel = (
+        df.groupby("channel")
+        .agg(
+            campaigns=("campaign_id", "count"),
+            total_budget=("budget", "sum"),
+            total_conversions=("conversions", "sum"),
+            avg_cost_per_conversion=("cost_per_conversion", "mean"),
         )
+        .reset_index()
+        .sort_values("avg_cost_per_conversion")
+    )
+
+    best = by_channel.iloc[0] if len(by_channel) else None
+    recommendations = []
+    if best is not None:
+        recommendations.append(
+            f"Shift budget toward {best['channel']} (avg ${best['avg_cost_per_conversion']:.0f}/conversion)."
+        )
+    recommendations.append("Pause campaigns with cost/conversion 2× above channel median.")
+
     return {
         "focus_area": "pricing",
-        "membership_offers": offers,
-        "recommendations": [
-            "Pitch Wellness 4-Pack to patients on visit 3 of an informal series.",
-            "Highlight Care Plan 12-Visit savings at initial eval.",
-        ],
+        "by_channel": by_channel.to_dict(orient="records"),
+        "recommendations": recommendations,
     }
 
 
-def get_pricing_tools(memberships: list[dict] | None = None) -> list[ToolDefinition]:
-    memberships = memberships or []
-
+def get_pricing_tools() -> list[ToolDefinition]:
     return [
         ToolDefinition(
-            name="analyze_service_margins",
-            description="Find pricing opportunities by margin and volume.",
+            name="analyze_visit_revenue",
+            description="Analyze revenue by service type and payment mix.",
             focus_area="pricing",
             parameters={"type": "object", "properties": {}, "required": []},
-            handler=lambda **_: analyze_service_margins(_service_pricing()),
+            handler=lambda **_: analyze_visit_revenue(_data("visit_summary")),
         ),
         ToolDefinition(
-            name="recommend_membership_offers",
-            description="Compare membership packages vs single-visit pricing.",
+            name="analyze_marketing_roi",
+            description="Compare marketing channel cost per conversion.",
             focus_area="pricing",
             parameters={"type": "object", "properties": {}, "required": []},
-            handler=lambda **_: recommend_membership_offers(_service_pricing(), memberships),
+            handler=lambda **_: analyze_marketing_roi(_data("marketing_campaigns")),
         ),
     ]
 
@@ -89,5 +106,7 @@ def bind_data(tables: dict[str, pd.DataFrame]) -> None:
     _DATA = tables
 
 
-def _service_pricing() -> pd.DataFrame:
-    return _DATA["service_pricing"]
+def _data(key: str) -> pd.DataFrame:
+    if key not in _DATA:
+        raise RuntimeError(f"Pricing tools require '{key}' — bind_data() first.")
+    return _DATA[key]

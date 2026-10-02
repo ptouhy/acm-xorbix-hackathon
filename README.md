@@ -1,82 +1,103 @@
-# ACM x Xorbix Hackathon 2026 — Clinic Growth Agent
+# ACM x Xorbix × UIowa Hackathon 2026 — Clinic Growth Agent
 
-**Agentic AI solution on Databricks Free Edition** for a chiropractic clinic seeking higher revenue and profit margin.
+**Agentic AI solution on Databricks Free Edition** for a boutique chiropractic business scaling toward $250M ARR.
+
+**Public repo:** https://github.com/ptouhy/acm-xorbix-hackathon
 
 | | |
 |---|---|
-| **Dates** | Oct 1 – 8, 2026 |
-| **Platform** | Databricks Free Edition |
+| **Dates** | Oct 1 kickoff → Oct 8 demo (Seamans, Engineering Building) |
+| **Platform** | Databricks Free Edition (serverless) |
+| **Data** | `workspace.chiro_hackathon.*` (official synthetic dataset) |
 | **Deploy** | Databricks Asset Bundles (DAB) |
-| **Team size** | 1–2 members |
 
-## Challenge
+## What this builds
 
-Build an agent that addresses one or more strategic focus areas:
+An agent that **reasons over clinic data** and recommends actions across:
 
-1. **Leads** — attract, qualify, and convert new patients
-2. **Retention** — reduce drop-off and improve care plan completion
-3. **Pricing** — optimize services, packages, and memberships
+1. **Leads** — funnel analysis, lead scoring, speed-to-lead
+2. **Retention** — churn-risk patients, inactivity, no-show rates
+3. **Pricing** — revenue by service, package mix, marketing ROI
 
-This repo implements **all three** as modular agent tools; enable/disable focus areas in `config/agent.yaml`.
+## Prerequisites (you've done step 1 ✓)
 
-## Quick start
+- [x] Databricks Free Edition workspace
+- [x] Run `notebooks/generate_synthetic_data.py` → 8 tables populated
+- [ ] Deploy this repo via DAB
+- [ ] Run `notebooks/02_run_agent.py` and demo
+- [ ] Prepare 2-minute elevator pitch
+
+## Deploy & run on Databricks
 
 ```bash
-chmod +x scripts/setup.sh && ./scripts/setup.sh
-source ~/.venvs/acm-xorbix-hackathon/bin/activate
-pytest
+# Local — authenticate once
+databricks auth login --host https://YOUR-WORKSPACE.cloud.databricks.com
+
+# Deploy bundle (syncs config, src, notebooks)
+databricks bundle validate
+databricks bundle deploy -t dev
+
+# Run the agent job
+databricks bundle run clinic_agent_pipeline -t dev
 ```
 
-Try the agent locally:
+Or open **`notebooks/02_run_agent.py`** in the workspace and run interactively.
 
-```python
+### Bundle variables (`databricks.yml`)
+
+| Variable | Default | Notes |
+|----------|---------|-------|
+| `catalog` | `workspace` | Run `SHOW CATALOGS` if different |
+| `schema` | `chiro_hackathon` | From synthetic data notebook |
+
+## Local development
+
+```bash
+source ~/.venvs/acm-xorbix-hackathon/bin/activate
+pytest
+python -c "
 from acm_hackathon.agents import ClinicGrowthAgent
-
-agent = ClinicGrowthAgent()
-print(agent.ask("Which patients are at risk of dropping off?").answer)
+from acm_hackathon.data.sample_data import all_sample_tables
+print(ClinicGrowthAgent(tables=all_sample_tables()).ask('Which leads should we prioritize?').answer)
+"
 ```
 
 ## Project layout
 
 ```
-config/                 # YAML config (prompts, clinic profile, UC targets)
+config/                    # YAML — prompts, UC targets (no secrets)
+notebooks/
+  generate_synthetic_data.py   # Official data generator (already run)
+  02_run_agent.py              # Main demo notebook
 src/acm_hackathon/
-  agents/               # Orchestrator + focus-area tools
-  data/                 # Schemas + sample clinic data
-notebooks/              # Databricks notebooks (deployed via DAB)
-docs/                   # Architecture & deployment guides
-databricks.yml          # Asset bundle definition
-tests/                  # pytest suite
+  agents/                  # Orchestrator + focus-area tools
+  data/loader.py           # Spark SQL → agent tables
+databricks.yml             # DAB — deploy to any workspace via config
+docs/                      # Architecture & deployment guides
 ```
 
-## Deploy to Databricks Free Edition
+## Judging checklist
+
+| Criterion | How we address it |
+|-----------|-------------------|
+| Business Impact | Quantified recoverable revenue, conversion rates, no-show impact |
+| Technical Innovation | Multi-tool agent over 8-table UC dataset |
+| Prototype Quality | Runnable notebook + DAB job |
+| Pitch & Development | Public repo + DAB + README |
+
+## Team setup (Tommy)
 
 ```bash
-databricks auth login --host "$DATABRICKS_HOST"
-databricks bundle validate
-databricks bundle deploy -t dev
-databricks bundle run clinic_agent_pipeline -t dev
+git clone https://github.com/ptouhy/acm-xorbix-hackathon.git
+cd acm-xorbix-hackathon
+./scripts/setup.sh
+databricks auth login --host https://YOUR-WORKSPACE.cloud.databricks.com
 ```
 
-See [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) and [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
+## Next steps
 
-## Configuration
-
-| File | Purpose |
-|------|---------|
-| `config/agent.yaml` | System prompt, model endpoint, enabled focus areas |
-| `config/clinic.yaml` | Clinic name, services, memberships |
-| `config/databricks.yaml` | Unity Catalog catalog/schema/table names |
-
-## Engineering practices
-
-- **Version control** — git + modular Python package
-- **Config separated from code** — all prompts/settings in YAML
-- **Testing** — `pytest` for tools, settings, and agent routing
-- **Documentation** — README + architecture/deployment docs
-
-## Notes
-
-- Free Edition is **serverless-only**; jobs in `databricks.yml` use serverless environments.
-- Sample data is synthetic — replace with Unity Catalog tables for your demo.
-- Set `use_model=true` in notebook `02_run_agent` to use a Foundation Model endpoint.
+1. **Deploy** — `databricks bundle deploy -t dev`
+2. **Demo** — run `02_run_agent.py` with a hero question
+3. **Pick your pitch angle** — one workflow (e.g. retention + revenue recovery)
+4. **Optional** — set `use_model=true` for Foundation Model synthesis
+5. **Oct 8** — 2-min pitch: problem → solution → how built on Databricks

@@ -15,4 +15,5 @@ def test_clinic_settings_load():
 
 def test_databricks_table_fqn():
     s = DatabricksSettings.load()
-    assert s.table_fqn("patients") == "main.clinic_hackathon.patients"
+    assert s.table_fqn("patients") == "workspace.chiro_hackathon.patients"
+    assert s.table_fqn("visits") == "workspace.chiro_hackathon.visits"
