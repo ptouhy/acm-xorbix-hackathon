@@ -6,7 +6,8 @@
 
 # COMMAND ----------
 
-# MAGIC %pip install "git+https://github.com/ptouhy/acm-xorbix-hackathon.git" pyyaml python-dotenv -q
+# MAGIC %pip install --no-deps "git+https://github.com/ptouhy/acm-xorbix-hackathon.git" -q
+# MAGIC %pip install pyyaml python-dotenv -q
 
 # COMMAND ----------
 
