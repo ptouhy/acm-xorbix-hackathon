@@ -11,7 +11,7 @@ Build an **agentic AI solution on Databricks Free Edition** for a chiropractic c
 We will add these one at a time — only when you're ready for each step:
 
 1. **Databricks workspace** — Free Edition account + synthetic data tables → see [docs/STEP1.md](docs/STEP1.md)
-2. **Understand the data** — 8 tables (patients, leads, visits, etc.)
+2. **Understand the data** — 8 tables (patients, leads, visits, etc.) → see [docs/STEP2.md](docs/STEP2.md)
 3. **One simple notebook** — query the data, no agent yet
 4. **Agent tools** — Python functions that analyze leads / retention / pricing
 5. **Agent orchestrator** — picks tools, returns recommendations
@@ -29,11 +29,9 @@ Patrick + Tommy
 
 ---
 
-## Step 1 (current)
+## Progress
 
-1. **Repos → Add Repo** → `https://github.com/ptouhy/acm-xorbix-hackathon`
-2. Open `notebooks/generate_synthetic_data.py`
-3. **Run all cells**
-4. Confirm row counts at the bottom
-
-No zip needed — the notebook is in the repo.
+- [x] **Step 1** — synthetic data in `workspace.chiro_hackathon` ✓
+- [ ] **Step 2** — run `notebooks/02_explore_data.py` (SQL only, no imports)
+- [ ] Step 3 — first agent tool
+- [ ] Step 4+ — agent, DAB, demo
