@@ -27,6 +27,7 @@ class BriefingResult:
     total_estimated_impact_usd: float = 0.0
     tool_outputs: list[dict] = field(default_factory=list)
     briefing_text: str = ""
+    trace: list[dict] = field(default_factory=list)  # tool_call/tool_result steps (agentic mode)
 
 
 def rank_actions(tool_results: list[dict]) -> list[dict]:

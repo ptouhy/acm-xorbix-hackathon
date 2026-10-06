@@ -19,3 +19,6 @@ thresholds:
 agent:
   name: Revenue Briefing Agent
   default_question: "What should we focus on today to maximize revenue?"
+  llm_endpoint: databricks-meta-llama-3-3-70b-instruct  # Foundation Model serving endpoint
+  temperature: 0.1
+  max_steps: 6  # max LLM turns before falling back to ranked tool output
