@@ -8,7 +8,7 @@
 
 # COMMAND ----------
 
-# MAGIC %pip install pyyaml -q
+# MAGIC %pip install pyyaml "databricks-sdk[openai]" -q
 
 # COMMAND ----------
 
