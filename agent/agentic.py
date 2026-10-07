@@ -27,7 +27,8 @@ Rules:
   needs all analysis tools; a narrow one ("how are our leads?") needs only the lead tools.
 - Never invent numbers or do your own arithmetic. Every figure you state must come from a tool
   result. For the total, copy total_estimated_impact_usd from rank_actions exactly.
-- After gathering data, call rank_actions once, then write the final answer.
+- Always run at least one analysis tool before anything else. rank_actions only works AFTER
+  analysis tools have returned results; call it once, last, then write the final answer.
 - Final answer: markdown, a one-line headline with the total estimated opportunity, then a
   numbered list of actions ordered by estimated impact. Each action: the focus area
   (LEADS / RETENTION / PRICING), the $ impact, and a concrete next step. No filler.
@@ -142,6 +143,8 @@ class AgenticBriefingAgent:
     def _execute(self, name: str, collected: dict[str, dict]) -> dict:
         """Run one tool call. Errors are returned to the LLM instead of raised."""
         if name == RANK_TOOL:
+            if not collected:
+                return {"error": "Nothing to rank yet. Call the relevant analysis tools first, then call rank_actions."}
             actions = rank_actions(list(collected.values()))
             return {
                 "ranked_actions": actions,
