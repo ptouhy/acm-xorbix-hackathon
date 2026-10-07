@@ -25,7 +25,8 @@ Your job: answer the staff member's question with a short, prioritized plan that
 Rules:
 - Choose only the tools relevant to the question. A broad question ("what should we focus on?")
   needs all analysis tools; a narrow one ("how are our leads?") needs only the lead tools.
-- Never invent numbers. Every figure you state must come from a tool result.
+- Never invent numbers or do your own arithmetic. Every figure you state must come from a tool
+  result. For the total, copy total_estimated_impact_usd from rank_actions exactly.
 - After gathering data, call rank_actions once, then write the final answer.
 - Final answer: markdown, a one-line headline with the total estimated opportunity, then a
   numbered list of actions ordered by estimated impact. Each action: the focus area
@@ -141,7 +142,11 @@ class AgenticBriefingAgent:
     def _execute(self, name: str, collected: dict[str, dict]) -> dict:
         """Run one tool call. Errors are returned to the LLM instead of raised."""
         if name == RANK_TOOL:
-            return {"ranked_actions": rank_actions(list(collected.values()))}
+            actions = rank_actions(list(collected.values()))
+            return {
+                "ranked_actions": actions,
+                "total_estimated_impact_usd": round(sum(a["estimated_impact_usd"] for a in actions), 2),
+            }
         if name not in spark_tool_names():
             return {"error": f"Unknown tool '{name}'. Available: {spark_tool_names() + [RANK_TOOL]}"}
         if name in collected:

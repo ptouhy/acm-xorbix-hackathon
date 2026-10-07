@@ -47,8 +47,12 @@ for event in agent.run_stream(question):
         print(f"→ calling {event.data['tool']}")
     elif event.type == "tool_result":
         out = event.data["output"]
-        print(f"  ✓ {event.data['tool']}: ${out.get('estimated_impact_usd', 0):,.0f}" if "error" not in out
-              else f"  ✗ {event.data['tool']}: {out['error']}")
+        if "error" in out:
+            print(f"  ✗ {event.data['tool']}: {out['error']}")
+        elif "ranked_actions" in out:
+            print(f"  ✓ ranked {len(out['ranked_actions'])} actions, total ${out['total_estimated_impact_usd']:,.0f}")
+        else:
+            print(f"  ✓ {event.data['tool']}: ${out.get('estimated_impact_usd', 0):,.0f}")
     elif event.type == "fallback":
         print(f"⚠ LLM unavailable, using deterministic briefing ({event.data['reason']})")
         result = event.data["result"]

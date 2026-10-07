@@ -66,6 +66,17 @@ def test_ranks_by_impact_across_tools():
     assert result.total_estimated_impact_usd == 6000
 
 
+def test_rank_tool_returns_code_computed_total():
+    agent = make_agent([
+        use(call("find_stale_leads", "1"), call("find_churn_risk_patients", "2")),
+        use(call("rank_actions", "3")),
+        say("done"),
+    ])
+    result = agent.run("q")
+    ranked = next(t["output"] for t in result.trace if t["tool"] == "rank_actions" and t["type"] == "tool_result")
+    assert ranked["total_estimated_impact_usd"] == 6000
+
+
 def test_duplicate_call_is_cached_and_unknown_tool_is_reported():
     agent = make_agent([
         use(call("find_stale_leads", "1")),
