@@ -2,7 +2,7 @@
 # MAGIC %md
 # MAGIC # Step 1 — Generate Synthetic Clinic Data
 # MAGIC
-# MAGIC Run **all cells** once on a fresh Databricks Free Edition workspace.
+# MAGIC Run by the bundle job `setup_data` (or interactively: **Run all** once per workspace; set the catalog/schema widgets if needed).
 # MAGIC
 # MAGIC Creates 8 tables in `{catalog}.chiro_hackathon`:
 # MAGIC
@@ -40,9 +40,11 @@ Faker.seed(SEED)
 random.seed(SEED)
 fake = Faker()
 
-# Change if SHOW CATALOGS shows a different default on your workspace
-CATALOG = "workspace"
-SCHEMA = "chiro_hackathon"
+# Change via the widgets (or bundle variables) if SHOW CATALOGS shows a different default
+dbutils.widgets.text("catalog", "workspace")  # noqa: F821
+dbutils.widgets.text("schema", "chiro_hackathon")  # noqa: F821
+CATALOG = dbutils.widgets.get("catalog")  # noqa: F821
+SCHEMA = dbutils.widgets.get("schema")  # noqa: F821
 
 NUM_LOCATIONS = 20
 NUM_PROVIDERS = 90

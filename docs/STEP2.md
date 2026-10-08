@@ -6,7 +6,7 @@ Step 1 done — 8 tables in `workspace.chiro_hackathon`.
 
 ## Instructions
 
-1. In Repos, open `notebooks/02_explore_data.py`
+1. In Repos, open `src/notebooks/02_explore_data.py`
 2. Run all cells
 3. Read each result table
 

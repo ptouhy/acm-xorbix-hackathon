@@ -4,7 +4,7 @@ Measure (part 1) — log every run to MLflow and record who the agent told staff
 STEP EXPLANATION:
   MLflow answers "what did the agent do?" (question, tools, impact, trace).
   The ledger table (agent_recommendations) answers "did it work?" later: it stores each
-  contacted person AND a same-size holdout group, so agent/measure.py can compare outcomes.
+  contacted person AND a same-size holdout group, so src/agent/measure.py can compare outcomes.
 """
 
 from __future__ import annotations

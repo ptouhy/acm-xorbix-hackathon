@@ -30,9 +30,9 @@ variables:
 
 sync:
   include:
-    - agent/**
+    - src/**
     - config/**
-    - notebooks/**
+    - sample_data/**
 
 targets:
   dev:

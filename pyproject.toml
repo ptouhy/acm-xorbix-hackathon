@@ -10,5 +10,5 @@ llm = ["databricks-sdk[openai]"]
 dev = ["pytest>=8.0"]
 
 [tool.pytest.ini_options]
-pythonpath = ["."]
+pythonpath = ["src"]
 testpaths = ["tests"]

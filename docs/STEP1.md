@@ -2,13 +2,13 @@
 
 ## Do you need the zip file?
 
-**No.** The notebook `notebooks/generate_synthetic_data.py` in this repo *is* the zip contents. Just use the repo.
+**No.** The notebook `sample_data/generate_synthetic_data.py` in this repo *is* the zip contents. Just use the repo.
 
 ## Instructions
 
 1. In Databricks: **Workspace → Repos → Add Repo**
 2. URL: `https://github.com/ptouhy/acm-xorbix-hackathon`
-3. Open `notebooks/generate_synthetic_data.py`
+3. Open `sample_data/generate_synthetic_data.py`
 4. **Run all cells** (serverless is fine)
 5. Wait for the final cell — it prints row counts for all 8 tables
 

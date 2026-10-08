@@ -11,7 +11,7 @@ Staff ask **one question**; the agent runs **four analysis tools** on Unity Cata
 ```
 Question
    ↓
-AgenticBriefingAgent (agent/agentic.py)  ⇄  LLM (Model Serving, tool calling)
+AgenticBriefingAgent (src/agent/agentic.py)  ⇄  LLM (Model Serving, tool calling)
    ↓ chooses tools, with arguments
 ┌─ ANALYSIS (size $) ──────────────────────────────┐
 │ find_stale_leads · find_top_lead_sources         │
@@ -40,16 +40,17 @@ get a short reply with no tools; any LLM failure falls back to the fixed pipelin
 | File | Purpose |
 |------|---------|
 | `config/settings.yaml` | Catalog, schema, $ assumptions, thresholds, LLM endpoint |
-| `agent/tools.py` | Spark SQL tools: analysis, diagnostic, draft_outreach |
-| `agent/registry.py` | Tool descriptions + argument schemas shown to the LLM, and dispatch |
-| `agent/llm.py` | Model Serving client |
-| `agent/agentic.py` | The LLM tool-calling loop, guards, fallback |
-| `agent/briefing.py` | Ranking/formatting + the original fixed-pipeline agent (the fallback) |
-| `agent/tracking.py` | MLflow logging + recommendation ledger |
-| `agent/measure.py` | Contacted-vs-holdout outcome comparison |
-| `notebooks/04_run_agentic.py` | Agent demo + logging |
-| `notebooks/05_measure_outcomes.py` | Measure step |
-| `databricks.yml`, `resources/` | DAB: variables, job (2 tasks), MLflow experiment |
+| `src/agent/tools.py` | Spark SQL tools: analysis, diagnostic, draft_outreach |
+| `src/agent/registry.py` | Tool descriptions + argument schemas shown to the LLM, and dispatch |
+| `src/agent/llm.py` | Model Serving client |
+| `src/agent/agentic.py` | The LLM tool-calling loop, guards, fallback |
+| `src/agent/briefing.py` | Ranking/formatting + the original fixed-pipeline agent (the fallback) |
+| `src/agent/tracking.py` | MLflow logging + recommendation ledger |
+| `src/agent/measure.py` | Contacted-vs-holdout outcome comparison |
+| `src/notebooks/04_run_agentic.py` | Agent demo + logging |
+| `src/notebooks/05_measure_outcomes.py` | Measure step |
+| `sample_data/generate_synthetic_data.py` | Synthetic data generator (run by the `setup_data` job) |
+| `databricks.yml`, `resources/` | DAB: variables, 2 jobs, MLflow experiment |
 
 ---
 
@@ -80,7 +81,7 @@ pytest
 ## Run on Databricks
 
 1. Repos → Pull latest
-2. Open `notebooks/03_run_briefing.py`
+2. Open `src/notebooks/03_run_briefing.py`
 3. Run all cells
 
 ## Deploy via DAB
