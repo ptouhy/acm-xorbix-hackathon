@@ -165,3 +165,57 @@ def test_log_run_is_non_fatal_without_mlflow(monkeypatch, capsys):
     monkeypatch.setitem(__import__("sys").modules, "mlflow", None)  # import raises ImportError
     run_id = log_run(BriefingResult(question="q"), "/x", "c", "s", 1.0)
     assert len(run_id) == 32 and "non-fatal" in capsys.readouterr().out
+
+
+# ---- Lead tools: actionable window + honest source ranking -------------------
+
+from agent.tools import find_stale_leads, find_top_lead_sources  # noqa: E402
+
+
+def test_find_stale_leads_separates_recent_from_dormant_and_prices_them_differently():
+    row = NS(stale_count=500, dormant_count=2000, slow_response_count=40, avg_response_hours=30.0)
+    spark = FakeSpark({"stale_count": [row]})
+    out = find_stale_leads(spark, "c", "s", S)
+    e = S["economics"]
+    assert out["estimated_impact_usd"] == round(
+        500 * e["avg_initial_eval_revenue"] * e["lead_conversion_rate"]
+        + 2000 * e["avg_initial_eval_revenue"] * e["dormant_lead_reactivation_rate"], 2)
+    assert out["metrics"]["stale_window_days"] == "3-30"
+    assert "Prioritize Referral" not in out["recommendation"]  # no unsupported claims
+    q = spark.queries[0]
+    assert "date_sub(current_date(), 180)" in q  # leads older than the cutoff are excluded
+
+
+def test_find_top_lead_sources_admits_when_no_source_stands_out():
+    rows = [NS(source="A", won=1580, resolved=2500, open_leads=400),   # 63.2%
+            NS(source="B", won=1560, resolved=2500, open_leads=300)]   # 62.4%
+    out = find_top_lead_sources(FakeSpark({"GROUP BY source": rows}), "c", "s", S)
+    assert out["metrics"]["significant"] is False
+    assert out["estimated_impact_usd"] == 0
+    assert "No lead source stands out" in out["recommendation"]
+
+
+def test_find_top_lead_sources_ranks_when_difference_is_real():
+    rows = [NS(source="A", won=2000, resolved=2500, open_leads=400),   # 80%
+            NS(source="B", won=1500, resolved=2500, open_leads=300),   # 60%
+            NS(source="C", won=1550, resolved=2500, open_leads=300)]
+    out = find_top_lead_sources(FakeSpark({"GROUP BY source": rows}), "c", "s", S)
+    assert out["metrics"]["significant"] is True
+    assert out["metrics"]["sources_by_win_rate"][0]["source"] == "A"
+    assert out["estimated_impact_usd"] > 0
+
+
+def test_find_revenue_leaks_prices_only_trailing_no_shows_and_not_the_package_upsell():
+    spark = FakeSpark({
+        "No-Show": [NS(no_shows=8800, total_appts=88000)],
+        "Package Plan": [NS(package_plan_pct=25.0, package_rev=96.0, other_rev=95.8)],
+        "marketing_campaigns": [NS(channel="SEO", campaigns=36, cost_per_conversion=22.5),
+                                NS(channel="Social", campaigns=26, cost_per_conversion=50.0)],
+    })
+    from agent.tools import find_revenue_leaks
+    out = find_revenue_leaks(spark, "c", "s", S)
+    econ = S["economics"]
+    assert out["estimated_impact_usd"] == round(8800 * econ["avg_visit_revenue"] * econ["no_show_recovery_rate"], 2)
+    assert out["metrics"]["no_show_rate_pct"] == 10.0
+    assert "no upsell revenue is counted" in out["recommendation"]
+    assert "date_sub(current_date(), 365)" in spark.queries[0]  # trailing window, not all history

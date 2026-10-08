@@ -3,17 +3,22 @@
 catalog: workspace
 schema: chiro_hackathon
 
-# Rough $ estimates for demo impact (synthetic clinic benchmarks)
+# $ assumptions. Revenue per visit is calibrated to the synthetic data (trailing 12 months of `visits`);
+# the rates (conversion, re-engagement, no-show recovery) are assumptions: change them and the numbers move.
 economics:
-  avg_initial_eval_revenue: 150
-  avg_visit_revenue: 75
+  avg_initial_eval_revenue: 105  # measured: Initial Consultation avg $104.80
+  avg_visit_revenue: 96  # measured: avg revenue per completed visit $95.80
   avg_recoverable_visits_per_reengaged_patient: 4
   churn_reengagement_rate: 0.25
-  lead_conversion_rate: 0.20
-  no_show_recovery_rate: 0.5  # share of excess no-shows recovered by targeted reminders
+  lead_conversion_rate: 0.20  # leads that went quiet recently
+  dormant_lead_reactivation_rate: 0.05  # win-back rate for leads that went cold (31-180 days)
+  no_show_recovery_rate: 0.3  # assumption: share of no-shows that SMS/phone reminders win back
 
 thresholds:
-  stale_lead_days: 3
+  lookback_days: 365  # no-show and visit figures use the trailing 12 months, so $ are annual
+  stale_lead_days: 3  # a lead is 'stale' once it has been open this long ...
+  stale_lead_max_days: 30  # ... until this age; older open leads are 'dormant' (win-back, lower odds)
+  dormant_lead_max_days: 180  # open leads older than this are too cold to count
   high_churn_risk: 0.75
   slow_response_hours: 24
   min_segment_appts: 500  # ignore tiny segments in no-show diagnostics

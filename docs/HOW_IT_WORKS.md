@@ -49,6 +49,7 @@ get a short reply with no tools; any LLM failure falls back to the fixed pipelin
 | `src/agent/measure.py` | Contacted-vs-holdout outcome comparison |
 | `src/notebooks/04_run_agentic.py` | Agent demo + logging |
 | `src/notebooks/05_measure_outcomes.py` | Measure step |
+| `src/agent/evals.py`, `src/notebooks/06_eval_tool_selection.py` | Tool-selection eval: 10 questions × N runs, scored on tools and arguments (job `evaluate_agent`) |
 | `sample_data/generate_synthetic_data.py` | Synthetic data generator (run by the `setup_data` job) |
 | `databricks.yml`, `resources/` | DAB: variables, 2 jobs, MLflow experiment |
 
@@ -57,10 +58,10 @@ get a short reply with no tools; any LLM failure falls back to the fixed pipelin
 ## Tool details
 
 **Analysis** (each returns `estimated_impact_usd`)
-- `find_stale_leads`: open leads older than the stale threshold; impact = count × eval revenue × conversion rate.
+- `find_stale_leads`: open leads in an actionable window. Recent (3-30 days): count × eval revenue × conversion rate. Dormant (31-180 days): count × eval revenue × a lower win-back rate. Older leads are excluded as too cold.
 - `find_churn_risk_patients`: Active patients above the churn threshold; impact = count × visits × visit revenue × re-engagement rate.
-- `find_revenue_leaks`: no-show rate, Package Plan share, cheapest marketing channel.
-- `find_top_lead_sources`: best-converting sources among open leads.
+- `find_revenue_leaks`: prices the last 12 months of no-shows (count × measured revenue per visit × a recovery-rate assumption). Package Plan economics and marketing cost per conversion are reported but not priced, because the data shows no package revenue premium and marketing returns may not scale.
+- `find_top_lead_sources`: win rate by source (Converted / (Converted + Lost)), with a significance test. If no source stands out, it says so and prices nothing.
 
 **Diagnostic**
 - `diagnose_no_shows`: no-show rate by appointment type, booking channel, booking lead time and location versus the clinic baseline; only segments beating it by `min_lift_pts` count.

@@ -67,9 +67,9 @@ _SPARK_TOOLS: dict[str, tuple[Callable[..., dict], str, dict]] = {
     ),
     "find_revenue_leaks": (
         find_revenue_leaks,
-        "ANALYSIS / PRICING. Finds revenue leaks: appointment no-show rate, share of visits on Package "
-        "Plans, and the cheapest marketing channel per conversion. Use for pricing, packages, "
-        "no-shows, or marketing-spend questions.",
+        "ANALYSIS / PRICING. Prices the revenue lost to no-shows over the last 12 months, and reports "
+        "package-plan economics and marketing cost per conversion by channel. Use for pricing, "
+        "packages, no-shows, or marketing-spend questions.",
         _NO_ARGS,
     ),
     "diagnose_no_shows": (

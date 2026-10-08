@@ -16,6 +16,26 @@ resources:
               schema: ${var.schema}
           environment_key: Default
 
+    evaluate_agent:
+      name: "[${bundle.target}] Evaluate tool selection"
+      max_concurrent_runs: 1
+      timeout_seconds: 3600
+      environments:
+        - environment_key: Default
+          spec:
+            environment_version: "3"
+      tasks:
+        - task_key: eval_tool_selection
+          notebook_task:
+            notebook_path: ../src/notebooks/06_eval_tool_selection.py
+            base_parameters:
+              catalog: ${var.catalog}
+              schema: ${var.schema}
+              llm_endpoint: ${var.llm_endpoint}
+              runs: "5"
+              experiment_path: ${resources.experiments.briefing_experiment.name}
+          environment_key: Default
+
     revenue_briefing:
       name: "[${bundle.target}] Revenue Briefing Agent"
       max_concurrent_runs: 1

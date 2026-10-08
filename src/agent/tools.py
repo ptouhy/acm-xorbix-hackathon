@@ -17,38 +17,61 @@ def _table(catalog: str, schema: str, name: str) -> str:
     return f"{catalog}.{schema}.{name}"
 
 
+def _z_score(won_a: int, n_a: int, won_b: int, n_b: int) -> float:
+    """Two-proportion z-test (a vs b). Small samples swing by several points on noise alone."""
+    if not n_a or not n_b:
+        return 0.0
+    pooled = (won_a + won_b) / (n_a + n_b)
+    se = (pooled * (1 - pooled) * (1 / n_a + 1 / n_b)) ** 0.5
+    return (won_a / n_a - won_b / n_b) / se if se else 0.0
+
+
 def find_stale_leads(spark: Any, catalog: str, schema: str, settings: dict) -> dict:
-    """LEADS: open leads sitting too long without conversion."""
+    """LEADS: open leads that went quiet — recent ones (worth a call) and dormant ones (win-back)."""
     econ = settings["economics"]
-    days = settings["thresholds"]["stale_lead_days"]
+    th = settings["thresholds"]
+    min_days, max_days, dormant_days = th["stale_lead_days"], th["stale_lead_max_days"], th["dormant_lead_max_days"]
     t = _table(catalog, schema, "leads")
 
     row = spark.sql(f"""
         SELECT
-            COUNT(*) AS stale_count,
-            SUM(CASE WHEN first_response_hours > {settings['thresholds']['slow_response_hours']}
-                     THEN 1 ELSE 0 END) AS slow_response_count,
-            ROUND(AVG(first_response_hours), 1) AS avg_response_hours
+            SUM(CASE WHEN created_date <= date_sub(current_date(), {min_days})
+                      AND created_date >= date_sub(current_date(), {max_days}) THEN 1 ELSE 0 END) AS stale_count,
+            SUM(CASE WHEN created_date < date_sub(current_date(), {max_days}) THEN 1 ELSE 0 END) AS dormant_count,
+            SUM(CASE WHEN created_date <= date_sub(current_date(), {min_days})
+                      AND created_date >= date_sub(current_date(), {max_days})
+                      AND first_response_hours > {th['slow_response_hours']} THEN 1 ELSE 0 END) AS slow_response_count,
+            ROUND(AVG(CASE WHEN created_date <= date_sub(current_date(), {min_days})
+                            AND created_date >= date_sub(current_date(), {max_days})
+                           THEN first_response_hours END), 1) AS avg_response_hours
         FROM {t}
         WHERE status IN ('New', 'Contacted', 'Qualified')
-          AND created_date <= date_sub(current_date(), {days})
+          AND created_date >= date_sub(current_date(), {dormant_days})
     """).collect()[0]
 
     stale = int(row.stale_count or 0)
-    impact = stale * econ["avg_initial_eval_revenue"] * econ["lead_conversion_rate"]
+    dormant = int(row.dormant_count or 0)
+    impact = (
+        stale * econ["avg_initial_eval_revenue"] * econ["lead_conversion_rate"]
+        + dormant * econ["avg_initial_eval_revenue"] * econ["dormant_lead_reactivation_rate"]
+    )
 
     return {
         "tool": "find_stale_leads",
         "focus": "leads",
         "metrics": {
             "stale_leads": stale,
+            "stale_window_days": f"{min_days}-{max_days}",
+            "dormant_leads": dormant,
+            "dormant_window_days": f"{max_days + 1}-{dormant_days}",
             "slow_response_leads": int(row.slow_response_count or 0),
             "avg_response_hours": float(row.avg_response_hours or 0),
         },
         "estimated_impact_usd": round(impact, 2),
         "recommendation": (
-            f"Same-day outreach to {stale:,} stale leads (open {days}+ days). "
-            f"Prioritize Referral and Walk-In sources first."
+            f"Same-day outreach to {stale:,} leads that went quiet {min_days}-{max_days} days ago, "
+            f"plus a win-back campaign for {dormant:,} dormant leads ({max_days + 1}-{dormant_days} days). "
+            "Leads older than that are excluded as too cold to call."
         ),
     }
 
@@ -88,95 +111,123 @@ def find_churn_risk_patients(spark: Any, catalog: str, schema: str, settings: di
 
 
 def find_revenue_leaks(spark: Any, catalog: str, schema: str, settings: dict) -> dict:
-    """PRICING: no-shows, package mix, and marketing waste."""
+    """PRICING: no-show revenue loss (priced), plus package mix and marketing efficiency (observations)."""
     econ = settings["economics"]
+    days = settings["thresholds"]["lookback_days"]
     appt = _table(catalog, schema, "appointments")
     visits = _table(catalog, schema, "visits")
     mkt = _table(catalog, schema, "marketing_campaigns")
 
     appt_row = spark.sql(f"""
-        SELECT
-            SUM(CASE WHEN status = 'No-Show' THEN 1 ELSE 0 END) AS no_shows,
-            COUNT(*) AS total_appts
+        SELECT SUM(CASE WHEN status = 'No-Show' THEN 1 ELSE 0 END) AS no_shows, COUNT(*) AS total_appts
         FROM {appt}
+        WHERE appointment_date >= date_sub(current_date(), {days})
     """).collect()[0]
 
     mix_row = spark.sql(f"""
-        SELECT
-            ROUND(100.0 * SUM(CASE WHEN payment_type = 'Package Plan' THEN 1 ELSE 0 END)
-                  / COUNT(*), 1) AS package_plan_pct
+        SELECT ROUND(100.0 * SUM(CASE WHEN payment_type = 'Package Plan' THEN 1 ELSE 0 END) / COUNT(*), 1)
+                   AS package_plan_pct,
+               ROUND(AVG(CASE WHEN payment_type = 'Package Plan' THEN revenue END), 2) AS package_rev,
+               ROUND(AVG(CASE WHEN payment_type <> 'Package Plan' THEN revenue END), 2) AS other_rev
         FROM {visits}
+        WHERE visit_date >= date_sub(current_date(), {days})
     """).collect()[0]
 
-    mkt_row = spark.sql(f"""
-        SELECT channel,
+    channels = spark.sql(f"""
+        SELECT channel, COUNT(*) AS campaigns,
                ROUND(SUM(budget) / NULLIF(SUM(conversions), 0), 2) AS cost_per_conversion
         FROM {mkt}
         GROUP BY channel
         ORDER BY cost_per_conversion ASC
-        LIMIT 1
-    """).collect()[0]
+    """).collect()
 
     no_shows = int(appt_row.no_shows or 0)
     total = int(appt_row.total_appts or 1)
     no_show_rate = no_shows / total
-    no_show_impact = no_shows * econ["avg_visit_revenue"] * 0.5  # recover half via reminders
+    lost = no_shows * econ["avg_visit_revenue"]
+    impact = lost * econ["no_show_recovery_rate"]
 
     package_pct = float(mix_row.package_plan_pct or 0)
-    package_gap_impact = 50_000 if package_pct < 20 else 20_000  # illustrative upsell opportunity
-
-    best_channel = mkt_row.channel
-    best_cpc = float(mkt_row.cost_per_conversion or 0)
-
-    total_impact = no_show_impact + package_gap_impact
+    package_rev, other_rev = float(mix_row.package_rev or 0), float(mix_row.other_rev or 0)
+    best, worst = channels[0], channels[-1]
 
     return {
         "tool": "find_revenue_leaks",
         "focus": "pricing",
         "metrics": {
+            "window_days": days,
             "no_show_count": no_shows,
             "no_show_rate_pct": round(no_show_rate * 100, 1),
+            "no_show_revenue_lost_usd": round(lost, 2),
             "package_plan_pct": package_pct,
-            "best_marketing_channel": best_channel,
-            "best_cost_per_conversion": best_cpc,
+            "package_revenue_per_visit": package_rev,
+            "other_revenue_per_visit": other_rev,
+            "best_marketing_channel": best.channel,
+            "best_cost_per_conversion": float(best.cost_per_conversion or 0),
+            "worst_marketing_channel": worst.channel,
+            "worst_cost_per_conversion": float(worst.cost_per_conversion or 0),
         },
-        "estimated_impact_usd": round(total_impact, 2),
+        "estimated_impact_usd": round(impact, 2),
         "recommendation": (
-            f"No-show rate {no_show_rate:.1%} ({no_shows:,} appointments) — deploy SMS reminders. "
-            f"Only {package_pct:.1f}% visits on Package Plan — upsell at visit 3. "
-            f"Shift budget toward {best_channel} (${best_cpc:.0f}/conversion)."
+            f"In the last {days} days {no_shows:,} appointments ({no_show_rate:.1%}) were no-shows, "
+            f"about ${lost:,.0f} of lost revenue; reminders that win back {econ['no_show_recovery_rate']:.0%} "
+            f"would return about ${impact:,.0f} a year. "
+            f"Package Plan visits are {package_pct:.1f}% of volume and earn ${package_rev:.2f} vs "
+            f"${other_rev:.2f} for other payment types, so no upsell revenue is counted. "
+            f"Marketing: {best.channel} costs ${float(best.cost_per_conversion):.0f}/conversion vs "
+            f"${float(worst.cost_per_conversion):.0f} for {worst.channel}; pilot a budget shift "
+            "(not priced, since returns may not scale)."
         ),
     }
 
 
 def find_top_lead_sources(spark: Any, catalog: str, schema: str, settings: dict) -> dict:
-    """LEADS (bonus): best converting sources for today's calls."""
+    """LEADS: do some lead sources win more often than others? (win rate = Converted / (Converted + Lost))"""
+    econ = settings["economics"]
+    th = settings["thresholds"]
     t = _table(catalog, schema, "leads")
     rows = spark.sql(f"""
         SELECT source,
-               COUNT(*) AS leads,
-               ROUND(100.0 * SUM(CASE WHEN converted_flag THEN 1 ELSE 0 END) / COUNT(*), 1)
-                   AS conversion_rate_pct
+               SUM(CASE WHEN status = 'Converted' THEN 1 ELSE 0 END) AS won,
+               SUM(CASE WHEN status IN ('Converted', 'Lost') THEN 1 ELSE 0 END) AS resolved,
+               SUM(CASE WHEN status IN ('New', 'Contacted', 'Qualified')
+                         AND created_date >= date_sub(current_date(), {th['dormant_lead_max_days']})
+                        THEN 1 ELSE 0 END) AS open_leads
         FROM {t}
-        WHERE status IN ('New', 'Contacted', 'Qualified')
         GROUP BY source
-        ORDER BY conversion_rate_pct DESC
-        LIMIT 3
     """).collect()
 
-    top = [{"source": r.source, "leads": int(r.leads), "conversion_rate_pct": float(r.conversion_rate_pct)} for r in rows]
-    econ = settings["economics"]
-    open_leads = sum(r["leads"] for r in top)
-    impact = open_leads * econ["avg_initial_eval_revenue"] * econ["lead_conversion_rate"] * 0.1
+    sources = [{
+        "source": r.source,
+        "win_rate_pct": round(100 * int(r.won or 0) / max(int(r.resolved or 0), 1), 1),
+        "open_leads": int(r.open_leads or 0),
+        "_won": int(r.won or 0),
+        "_n": int(r.resolved or 0),
+    } for r in rows]
+    sources.sort(key=lambda x: x["win_rate_pct"], reverse=True)
+    best, worst = sources[0], sources[-1]
+    z = _z_score(best["_won"], best["_n"], worst["_won"], worst["_n"])
+    significant = z >= th.get("min_z_score", 2.0)
+    for x in sources:
+        x.pop("_won"), x.pop("_n")
+
+    if significant:
+        top = sources[:3]
+        impact = sum(x["open_leads"] for x in top) * econ["avg_initial_eval_revenue"] * econ["lead_conversion_rate"] * 0.1
+        rec = (f"Work open leads from the highest-converting sources first: "
+               f"{', '.join(x['source'] + ' (' + str(x['win_rate_pct']) + '%)' for x in top)}.")
+    else:
+        top, impact = sources[:3], 0.0
+        rec = (f"No lead source stands out: win rates span only {best['win_rate_pct'] - worst['win_rate_pct']:.1f} pts "
+               f"({worst['source']} {worst['win_rate_pct']}% to {best['source']} {best['win_rate_pct']}%, z={z:.1f}). "
+               "Prioritize leads by age and status instead of source.")
 
     return {
         "tool": "find_top_lead_sources",
         "focus": "leads",
-        "metrics": {"top_sources": top, "open_leads_in_top_sources": open_leads},
+        "metrics": {"sources_by_win_rate": sources, "z_score": round(z, 2), "significant": significant},
         "estimated_impact_usd": round(impact, 2),
-        "recommendation": (
-            f"Call open leads from top sources first: {', '.join(r['source'] for r in top)}."
-        ),
+        "recommendation": rec,
     }
 
 
@@ -273,7 +324,9 @@ def diagnose_lead_response(spark: Any, catalog: str, schema: str, settings: dict
                     ELSE '24h+' END AS bucket,
                SUM(CASE WHEN status = 'Converted' THEN 1 ELSE 0 END) AS won,
                SUM(CASE WHEN status IN ('Converted', 'Lost') THEN 1 ELSE 0 END) AS resolved,
-               SUM(CASE WHEN status IN ('New', 'Contacted', 'Qualified') THEN 1 ELSE 0 END) AS open_leads
+               SUM(CASE WHEN status IN ('New', 'Contacted', 'Qualified')
+                         AND created_date >= date_sub(current_date(), {settings['thresholds']['dormant_lead_max_days']})
+                        THEN 1 ELSE 0 END) AS open_leads
         FROM {t}
         GROUP BY 1
         ORDER BY MIN(first_response_hours)
@@ -295,12 +348,9 @@ def diagnose_lead_response(spark: Any, catalog: str, schema: str, settings: dict
     worst = min(usable, key=lambda b: b["win_rate_pct"])
     spread = round(best["win_rate_pct"] - worst["win_rate_pct"], 1)
 
-    # Two-proportion z-test: is best-vs-worst bigger than random variation? Small buckets
-    # (e.g. the <1h bucket) swing by several points on noise alone.
+    # Is best-vs-worst bigger than random variation? Small buckets (e.g. <1h) swing by several points on noise.
     n1, n2 = best["resolved_leads"], worst["resolved_leads"]
-    pooled = (best["_won"] + worst["_won"]) / max(n1 + n2, 1)
-    se = (pooled * (1 - pooled) * (1 / n1 + 1 / n2)) ** 0.5 if n1 and n2 else 0
-    z = (best["_won"] / n1 - worst["_won"] / n2) / se if se else 0.0
+    z = _z_score(best["_won"], n1, worst["_won"], n2)
     min_z = settings["thresholds"].get("min_z_score", 2.0)
     significant = z >= min_z
     for b in buckets:
@@ -354,9 +404,10 @@ def draft_outreach(
     limit = max(1, min(int(limit or 10), 25))
 
     if segment == "stale_leads":
-        days = settings["thresholds"]["stale_lead_days"]
+        th = settings["thresholds"]
         t = _table(catalog, schema, "leads")
-        where = f"status IN {_OPEN_STATUSES} AND created_date <= date_sub(current_date(), {days})"
+        where = (f"status IN {_OPEN_STATUSES} AND created_date <= date_sub(current_date(), {th['stale_lead_days']})"
+                 f" AND created_date >= date_sub(current_date(), {th['stale_lead_max_days']})")
         total = int(spark.sql(f"SELECT COUNT(*) AS n FROM {t} WHERE {where}").collect()[0].n)
         rows = spark.sql(f"""
             SELECT lead_id, source, assigned_location_id AS location_id, created_date, status, num_touchpoints

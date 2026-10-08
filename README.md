@@ -81,7 +81,7 @@ pytest
 databricks bundle deploy -t dev
 ```
 
-This deploys two jobs (`setup_data`, `revenue_briefing`) and the MLflow experiment defined in `resources/revenue_briefing.yml`.
+This deploys three jobs (`setup_data`, `revenue_briefing`, `evaluate_agent`) and the MLflow experiment defined in `resources/revenue_briefing.yml`.
 
 **Targeting another workspace:** log in to it (`databricks auth login --host ...` or `--profile`). No code changes needed. Override defaults with variables:
 
@@ -115,6 +115,8 @@ baseline; re-run it after real outreach to get a verdict. MLflow logs every run 
 
 `src/notebooks/03_run_briefing.py` runs the original fixed pipeline (no LLM) for comparison.
 
+**Eval:** `databricks bundle run evaluate_agent -t dev` runs 10 questions × 5 runs against the real LLM and reports how often the agent picks the right tools (and the right arguments). Override the model with `--notebook-params llm_endpoint=<endpoint>` to compare models. Results are logged to MLflow.
+
 ---
 
 ## Project layout
@@ -122,7 +124,7 @@ baseline; re-run it after real outreach to get a verdict. MLflow logs every run 
 ```
 README.md
 databricks.yml                  # bundle: variables + targets (no workspace URL)
-resources/revenue_briefing.yml  # jobs (setup_data, revenue_briefing) + MLflow experiment
+resources/revenue_briefing.yml  # jobs (setup_data, revenue_briefing, evaluate_agent) + MLflow experiment
 src/
   agent/
     agentic.py                  # LLM tool-calling loop (+ fallback)
@@ -132,7 +134,8 @@ src/
     briefing.py                 # ranking/formatting + deterministic agent
     tracking.py                 # MLflow logging + recommendation ledger
     measure.py                  # contacted-vs-holdout outcome check
-  notebooks/                    # exploration (02), fixed pipeline (03), agent demo (04), measure (05)
+    evals.py                    # tool-selection eval cases + scoring
+  notebooks/                    # exploration (02), fixed pipeline (03), agent demo (04), measure (05), eval (06)
 sample_data/
   generate_synthetic_data.py    # synthetic-data generator (8 Unity Catalog tables)
 config/settings.yaml            # catalog, thresholds, $ assumptions, LLM endpoint

@@ -2,7 +2,7 @@
 
 ## Business problem (0:00–0:40)
 
-Our clinic network has to grow from **$100M to $250M ARR**. Growth stalls in places nobody sees on a dashboard: **leads go cold**, **patients quietly leave**, and **appointments are missed**. Our synthetic network has 45,000 leads, 60,000 patients and 350,000 appointments. In one snapshot we find about **26,900 leads untouched for 3+ days** and **6,500 active patients at high churn risk**. A manager can't work through that by hand each morning. They need to know **what to do today and what it's worth**.
+Our clinic network has to grow from **$100M to $250M ARR**. Growth stalls in places nobody sees on a dashboard: **leads go cold**, **patients quietly leave**, and **appointments are missed**. Our synthetic network has 45,000 leads, 60,000 patients and 350,000 appointments. In one snapshot we find **570 leads that went quiet in the last month** (plus 2,700 dormant ones worth a win-back), **6,500 active patients at high churn risk**, and about **8,800 no-shows in the last year** (10%). A manager can't work through that by hand each morning. They need to know **what to do today and what it's worth**.
 
 ## Solution (0:40–1:30)
 
@@ -20,12 +20,14 @@ The **Revenue Briefing Agent** is an LLM that works through the question the way
 
 - **Databricks Free Edition:** Unity Catalog for the synthetic data, Spark SQL tools, Model Serving for the LLM's tool calling, MLflow for run tracking.
 - **Declarative Automation Bundle:** one `databricks bundle deploy` ships the two-task job (agent, then measure) and the MLflow experiment. Another workspace needs configuration changes only, with no workspace URLs in the code.
-- **Reliable by design:** it falls back to a fixed pipeline if the LLM is down, and 26 tests cover the agent loop and the tools.
+- **Reliable by design:** it falls back to a fixed pipeline if the LLM is down, and an eval harness (10 questions × 5 runs) measures how often it picks the right tools, and the unit tests cover the loop and the tools.
 
 ---
 
 ## If a judge asks
 
+- **"Why are the lead numbers so small?"** We only count leads that are still actionable: 3 to 30 days old at full conversion odds, 31 to 180 days as a win-back at lower odds. Our first version counted 26,900 "stale" leads, but most were over a year old, so we cut them.
+- **"Is the pricing number inflated?"** We price only what the data supports: the last 12 months of no-shows at the measured $96 per visit, with a 30% recovery assumption. We dropped a package-upsell estimate because Package Plan visits earn the same as every other payment type.
 - **"Are the dollar figures real?"** They are estimates from configurable assumptions in `config/settings.yaml` (visit value, conversion rate and so on) applied to synthetic data. Change an assumption and the numbers move.
 - **"Did it actually work?"** The data is a static snapshot, so today the check shows the baseline. The holdout design is what gives a real answer once outreach happens. It's the same loop a production deployment would run.
 - **"Why didn't it find a no-show driver?"** Our synthetic no-shows are evenly spread, and the agent says so instead of inventing a pattern.
@@ -33,4 +35,4 @@ The **Revenue Briefing Agent** is an LLM that works through the question the way
 
 ## Demo numbers (replace with your live run)
 
-Total opportunity about **$2.6M**: pricing about $1.3M, leads about $0.8M, retention about $0.5M.
+Total opportunity about **$0.9M a year**: retention about $0.62M, pricing (no-shows) about $0.25M, leads about $0.03M. That's roughly 15% of the data's $6.1M trailing-12-month revenue.
