@@ -11,6 +11,7 @@ STEP EXPLANATION:
 from __future__ import annotations
 
 import json
+import re
 from dataclasses import dataclass
 from typing import Any, Iterator
 
@@ -32,8 +33,11 @@ Rules:
   result. For the total, copy total_estimated_impact_usd from rank_actions exactly.
 - Always run at least one analysis tool before anything else. rank_actions only works AFTER
   analysis tools have returned results; call it once, last, then write the final answer.
-- For the top-ranked action that involves contacting people (stale leads or churn risk), call
-  draft_outreach and include a short, personalized version of its message_template plus the
+- If the question is not about clinic revenue, leads, retention, no-shows, or pricing, call no
+  tools and reply in one or two sentences saying what you can help with. Do not use any figures.
+- Call draft_outreach for the segment the question is about (patients leaving -> churn_risk_patients,
+  leads -> stale_leads). On a broad question, use the top-ranked action that involves contacting
+  people. Include a short, personalized version of its message_template plus the
   first few targets, so staff can act immediately.
 - If a diagnostic tool ran, the answer MUST include a "Why" section quoting its specific findings
   (segment names and rates) before the action list. Do not replace findings with generic advice.
@@ -147,8 +151,12 @@ class AgenticBriefingAgent:
         # Rank whatever the LLM gathered (even if it never called rank_actions itself).
         outputs = list(collected.values())
         if not outputs:
+            if final_text and not re.search(r"\$|\d{3,}", final_text):
+                # Off-topic or clarifying reply with no figures: nothing to ground, so pass it through.
+                yield AgentEvent("final", {"result": BriefingResult(question=question, briefing_text=final_text, mode="agentic")})
+                return
             yield AgentEvent("fallback", {
-                "reason": "LLM called no tools",
+                "reason": "LLM answered without using any tools",
                 "result": self._fallback(question),
             })
             return
@@ -162,6 +170,7 @@ class AgenticBriefingAgent:
             total_estimated_impact_usd=total,
             tool_outputs=outputs,
             briefing_text=text,
+            mode="agentic",
         )})
 
     # -- internals ----------------------------------------------------------

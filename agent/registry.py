@@ -87,9 +87,10 @@ _SPARK_TOOLS: dict[str, tuple[Callable[..., dict], str, dict]] = {
     ),
     "draft_outreach": (
         draft_outreach,
-        "ACTION. Builds today's prioritized contact list plus a message template for a segment "
-        "('stale_leads' or 'churn_risk_patients'). Use when staff ask what to do next, who to call, "
-        "or for outreach copy. Personalize the returned message_template in your answer.",
+        "ACTION. Builds today's prioritized contact list plus a message template for ONE segment. "
+        "Pick the segment the question is about: 'churn_risk_patients' for patients leaving / "
+        "retention / lapsing; 'stale_leads' for leads / new-patient follow-up. Use when staff ask "
+        "who to call, what to do next, or for outreach copy.",
         _OUTREACH_ARGS,
     ),
 }

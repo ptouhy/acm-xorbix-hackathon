@@ -281,33 +281,51 @@ def diagnose_lead_response(spark: Any, catalog: str, schema: str, settings: dict
 
     buckets = []
     for r in rows:
-        resolved = int(r.resolved or 0)
+        won, resolved = int(r.won or 0), int(r.resolved or 0)
         buckets.append({
             "first_response": r.bucket,
-            "win_rate_pct": round(100 * int(r.won or 0) / resolved, 1) if resolved else 0.0,
+            "win_rate_pct": round(100 * won / resolved, 1) if resolved else 0.0,
+            "resolved_leads": resolved,
             "open_leads": int(r.open_leads or 0),
+            "_won": won,
         })
 
-    best = max(buckets, key=lambda b: b["win_rate_pct"])
-    worst = min(buckets, key=lambda b: b["win_rate_pct"])
+    usable = [b for b in buckets if b["resolved_leads"] > 0]
+    best = max(usable, key=lambda b: b["win_rate_pct"])
+    worst = min(usable, key=lambda b: b["win_rate_pct"])
     spread = round(best["win_rate_pct"] - worst["win_rate_pct"], 1)
-    gap_revenue = sum(
-        b["open_leads"] * (best["win_rate_pct"] - b["win_rate_pct"]) / 100
-        for b in buckets
-    ) * econ["avg_initial_eval_revenue"]
 
-    if spread < 2:
-        rec = (f"Response speed barely moves conversion (spread {spread} pts across buckets). "
-               "Prioritize follow-up volume and source quality over a response-time SLA.")
-    else:
+    # Two-proportion z-test: is best-vs-worst bigger than random variation? Small buckets
+    # (e.g. the <1h bucket) swing by several points on noise alone.
+    n1, n2 = best["resolved_leads"], worst["resolved_leads"]
+    pooled = (best["_won"] + worst["_won"]) / max(n1 + n2, 1)
+    se = (pooled * (1 - pooled) * (1 / n1 + 1 / n2)) ** 0.5 if n1 and n2 else 0
+    z = (best["_won"] / n1 - worst["_won"] / n2) / se if se else 0.0
+    min_z = settings["thresholds"].get("min_z_score", 2.0)
+    significant = z >= min_z
+    for b in buckets:
+        b.pop("_won")
+
+    if significant:
+        gap_revenue = sum(
+            b["open_leads"] * (best["win_rate_pct"] - b["win_rate_pct"]) / 100 for b in buckets
+        ) * econ["avg_initial_eval_revenue"]
         rec = (f"Leads first answered in {best['first_response']} win {best['win_rate_pct']}% vs "
-               f"{worst['win_rate_pct']}% for {worst['first_response']}. Set a response-time SLA.")
+               f"{worst['first_response']} at {worst['win_rate_pct']}% (z={z:.1f}, statistically "
+               "meaningful). Set a response-time SLA.")
+    else:
+        gap_revenue = 0.0
+        rec = (f"No statistically meaningful link between response speed and win rate (best "
+               f"{best['first_response']} {best['win_rate_pct']}% vs worst {worst['first_response']} "
+               f"{worst['win_rate_pct']}%, z={z:.1f}, need >= {min_z}). The gap is within random "
+               "variation, so don't build an SLA on it; prioritize follow-up volume and source quality.")
 
     return {
         "tool": "diagnose_lead_response",
         "kind": "diagnostic",
         "focus": "leads",
-        "metrics": {"win_rate_by_first_response": buckets, "spread_pts": spread},
+        "metrics": {"win_rate_by_first_response": buckets, "spread_pts": spread,
+                    "z_score": round(z, 2), "significant": significant},
         "estimated_impact_usd": round(gap_revenue, 2),
         "recommendation": rec,
     }
@@ -345,8 +363,12 @@ def draft_outreach(
             FROM {t} WHERE {where}
             ORDER BY CASE status WHEN 'Qualified' THEN 0 WHEN 'Contacted' THEN 1 ELSE 2 END,
                      num_touchpoints DESC, created_date DESC
-            LIMIT {limit}
+            LIMIT {limit * 2}
         """).collect()
+        # Next-in-line people (same size, next priority) are the holdout: NOT contacted, tracked
+        # so measure_outcomes can compare them with the contacted group later.
+        holdout_ids = [r.lead_id for r in rows[limit:]]
+        rows = rows[:limit]
         targets = [{
             "lead_id": r.lead_id, "source": r.source, "location_id": r.location_id,
             "created_date": str(r.created_date), "status": r.status,
@@ -365,8 +387,10 @@ def draft_outreach(
                    lifetime_visit_count, churn_risk_score
             FROM {t} WHERE {where}
             ORDER BY churn_risk_score DESC, lifetime_visit_count DESC
-            LIMIT {limit}
+            LIMIT {limit * 2}
         """).collect()
+        holdout_ids = [r.patient_id for r in rows[limit:]]
+        rows = rows[:limit]
         targets = [{
             "patient_id": r.patient_id, "location_id": r.location_id,
             "tenure_months": int(r.tenure_months),
@@ -386,6 +410,7 @@ def draft_outreach(
         "focus": focus,
         "metrics": {"segment": segment, "segment_size": total, "batch_size": len(targets)},
         "targets": targets,
+        "holdout_ids": holdout_ids,
         "message_template": _MESSAGES[segment],
         "estimated_impact_usd": round(impact, 2),
         "recommendation": (

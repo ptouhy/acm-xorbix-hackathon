@@ -10,15 +10,27 @@ An LLM agent on **Databricks Free Edition** investigates clinic data across **le
 
 ## How it works
 
+The agent follows the hackathon loop: **Observe → Reason → Decide → Act → Measure**.
+
 ```
 question → LLM (Databricks Model Serving) ⇄ tools (Spark SQL on Unity Catalog)
                   ↓
-   ranked actions + $ impact + briefing   (falls back to a fixed pipeline if the LLM is unavailable)
+   ranked actions + $ impact + "why" + today's call list + message
+                  ↓
+   MLflow run log  +  recommendation ledger (contacted vs holdout)  →  outcome check
+   (falls back to a fixed pipeline if the LLM is unavailable)
 ```
 
-- The LLM **chooses** which tools to call; broad questions use all of them, narrow ones use fewer.
-- Tools: `find_stale_leads`, `find_top_lead_sources`, `find_churn_risk_patients`, `find_revenue_leaks`.
-- All dollar assumptions live in `config/settings.yaml`, not in code.
+| Step | Tools |
+|------|-------|
+| **Observe** (size the opportunity in $) | `find_stale_leads`, `find_top_lead_sources`, `find_churn_risk_patients`, `find_revenue_leaks` |
+| **Reason** (why is it happening?) | `diagnose_no_shows`, `diagnose_lead_response` — they say so when a pattern is within random variation |
+| **Decide** | `rank_actions` ranks the analysis results by estimated dollar impact (totals are computed in code, not by the LLM) |
+| **Act** | `draft_outreach` builds today's prioritized contact list + message for stale leads or at-risk patients |
+| **Measure** | MLflow run logs + `agent_recommendations` ledger (contacted vs. same-size holdout) + `notebooks/05_measure_outcomes.py` |
+
+- The LLM **chooses** which tools to call: broad questions use several, narrow ones fewer, off-topic ones none.
+- All dollar assumptions and thresholds live in `config/settings.yaml`, not in code.
 - Details: [docs/HOW_IT_WORKS.md](docs/HOW_IT_WORKS.md) · Pitch: [docs/PITCH.md](docs/PITCH.md)
 
 ---
@@ -86,7 +98,19 @@ databricks bundle deploy -t dev \
 databricks bundle run revenue_briefing -t dev
 ```
 
-Or interactively: open `notebooks/04_run_agentic.py` in Databricks and **Run all**. Change the `question` widget to try narrower questions (e.g. *"How are our leads doing?"*).
+The job has two tasks: `run_agentic_briefing` (notebook 04) then `measure_outcomes` (notebook 05).
+Pass a different question with `--notebook-params question="..."`.
+
+Or interactively: open `notebooks/04_run_agentic.py` in Databricks and **Run all**. Try:
+- *"What should we focus on today to maximize revenue?"* (broad)
+- *"How are our leads doing?"* (narrow: only lead tools)
+- *"Why are we losing appointments to no-shows?"* (Reason tools)
+- *"Which patients are about to leave and who should we call first?"* (Act: churn call list)
+
+**Measure:** each outreach batch is saved to `<catalog>.<schema>.agent_recommendations` with a same-size
+holdout. `notebooks/05_measure_outcomes.py` compares contacted vs. holdout (lead conversion / patient
+retention) and reports the lift. The data is a static snapshot, so right after a run it shows the
+baseline; re-run it after real outreach to get a verdict. MLflow logs every run under the bundle's experiment.
 
 `notebooks/03_run_briefing.py` runs the original fixed pipeline (no LLM) for comparison.
 
@@ -102,9 +126,11 @@ agent/
   agentic.py                    # LLM tool-calling loop (+ fallback)
   registry.py                   # tool specs + dispatch
   llm.py                        # Databricks Model Serving client
-  tools.py                      # 4 Spark SQL tools
+  tools.py                      # Spark SQL tools: analysis, diagnostic (Reason), draft_outreach (Act)
   briefing.py                   # ranking/formatting + deterministic agent
-notebooks/                      # data generator, exploration, agent demos
+  tracking.py                   # MLflow logging + recommendation ledger
+  measure.py                    # contacted-vs-holdout outcome check
+notebooks/                      # data generator, exploration, agent demo (04), measure (05)
 tests/                          # pytest (fake LLM)
 docs/                           # how it works, pitch
 ```

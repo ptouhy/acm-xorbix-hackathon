@@ -28,6 +28,7 @@ class BriefingResult:
     tool_outputs: list[dict] = field(default_factory=list)
     briefing_text: str = ""
     trace: list[dict] = field(default_factory=list)  # tool_call/tool_result steps (agentic mode)
+    mode: str = "deterministic"  # "agentic" when the LLM drove the run
 
 
 def rank_actions(tool_results: list[dict]) -> list[dict]:

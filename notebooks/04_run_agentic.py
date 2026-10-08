@@ -28,12 +28,14 @@ from agent.llm import DatabricksLLM
 dbutils.widgets.text("catalog", "workspace")
 dbutils.widgets.text("schema", "chiro_hackathon")
 dbutils.widgets.text("question", "What should we focus on today to maximize revenue?")
+dbutils.widgets.text("experiment_path", "")  # blank = /Users/<you>/revenue_briefing_agent
 dbutils.widgets.text("llm_endpoint", "")  # blank = use agent.llm_endpoint from config/settings.yaml
 
 catalog = dbutils.widgets.get("catalog")
 schema = dbutils.widgets.get("schema")
 question = dbutils.widgets.get("question")
 llm_endpoint = dbutils.widgets.get("llm_endpoint")
+experiment_path = dbutils.widgets.get("experiment_path")
 
 # COMMAND ----------
 
@@ -42,6 +44,9 @@ llm_endpoint = dbutils.widgets.get("llm_endpoint")
 
 # COMMAND ----------
 
+import time
+
+start = time.time()
 llm = DatabricksLLM(llm_endpoint) if llm_endpoint else None
 agent = AgenticBriefingAgent(spark, catalog=catalog, schema=schema, llm=llm)  # noqa: F821
 result = None
@@ -61,10 +66,29 @@ for event in agent.run_stream(question):
             if out.get("kind") in ("diagnostic", "action"):
                 print(f"    ↳ {out['recommendation']}")
     elif event.type == "fallback":
-        print(f"⚠ LLM unavailable, using deterministic briefing ({event.data['reason']})")
+        print(f"⚠ Fell back to the deterministic briefing: {event.data['reason']}")
         result = event.data["result"]
     elif event.type == "final":
         result = event.data["result"]
 
 print()
 print(result.briefing_text)
+
+# COMMAND ----------
+
+# MAGIC %md
+# MAGIC ## Measure — log the run (MLflow) and record who was recommended (ledger + holdout)
+
+# COMMAND ----------
+
+from agent.tracking import log_run, record_recommendations
+
+if not experiment_path:
+    user = dbutils.notebook.entry_point.getDbutils().notebook().getContext().userName().get()  # noqa: F821
+    experiment_path = f"/Users/{user}/revenue_briefing_agent"
+run_id = log_run(result, experiment_path, catalog, schema, time.time() - start)
+try:
+    n = record_recommendations(spark, catalog, schema, run_id, question, result)  # noqa: F821
+    print(f"MLflow run {run_id}; recorded {n} contacted/holdout rows in {catalog}.{schema}.agent_recommendations")
+except Exception as exc:
+    print(f"Ledger write skipped (non-fatal): {exc}")

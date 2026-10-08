@@ -16,6 +16,17 @@ resources:
               schema: ${var.schema}
               llm_endpoint: ${var.llm_endpoint}
               question: ${var.question}
+              experiment_path: ${resources.experiments.briefing_experiment.name}
+          environment_key: Default
+
+        - task_key: measure_outcomes
+          depends_on:
+            - task_key: run_agentic_briefing
+          notebook_task:
+            notebook_path: ../notebooks/05_measure_outcomes.py
+            base_parameters:
+              catalog: ${var.catalog}
+              schema: ${var.schema}
           environment_key: Default
 
   experiments:

@@ -17,6 +17,8 @@ thresholds:
   high_churn_risk: 0.75
   slow_response_hours: 24
   min_segment_appts: 500  # ignore tiny segments in no-show diagnostics
+  min_followup_days: 7  # outcomes are only judged after this many days since the recommendation
+  min_z_score: 2.0  # statistical-significance bar for response-time diagnostics
   min_lift_pts: 1.0  # a segment must beat the baseline by this many points to count as a driver
 
 agent:

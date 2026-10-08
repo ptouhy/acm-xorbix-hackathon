@@ -11,17 +11,27 @@ Staff ask **one question**; the agent runs **four analysis tools** on Unity Cata
 ```
 Question
    ↓
-RevenueBriefingAgent (orchestrator)
+AgenticBriefingAgent (agent/agentic.py)  ⇄  LLM (Model Serving, tool calling)
+   ↓ chooses tools, with arguments
+┌─ ANALYSIS (size $) ──────────────────────────────┐
+│ find_stale_leads · find_top_lead_sources         │
+│ find_churn_risk_patients · find_revenue_leaks    │
+├─ DIAGNOSTIC (why) ───────────────────────────────┤
+│ diagnose_no_shows · diagnose_lead_response       │
+├─ ACTION (do) ────────────────────────────────────┤
+│ draft_outreach(segment, limit)                   │
+└──────────────────────────────────────────────────┘
    ↓
-┌──────────────┬─────────────────┬──────────────────┬────────────────────┐
-│ stale leads  │ churn risk      │ revenue leaks    │ top lead sources   │
-│ (leads)      │ (retention)     │ (pricing)        │ (leads)            │
-└──────────────┴─────────────────┴──────────────────┴────────────────────┘
+rank_actions() — sorts ANALYSIS results by estimated_impact_usd
    ↓
-rank_actions() — sort by estimated_impact_usd
+Briefing (+ "Why" findings + call list, appended in code)
    ↓
-Markdown briefing + MLflow log
+MLflow log · agent_recommendations ledger (contacted + holdout) · 05_measure_outcomes
 ```
+
+Guards (all tested): `rank_actions` refuses to run before any analysis tool; totals are computed in
+code; diagnostics refuse to report differences that are within random variation; off-topic questions
+get a short reply with no tools; any LLM failure falls back to the fixed pipeline.
 
 ---
 
@@ -29,36 +39,34 @@ Markdown briefing + MLflow log
 
 | File | Purpose |
 |------|---------|
-| `config/settings.yaml` | Catalog, schema, $ assumptions, thresholds — **not in code** |
-| `agent/tools.py` | 4 Spark SQL tools (one per business question) |
-| `agent/briefing.py` | Orchestrator: run tools → rank → format |
-| `agent/settings.py` | Loads YAML config |
-| `notebooks/03_run_briefing.py` | Demo notebook (what judges see) |
-| `databricks.yml` | DAB — deploy job + MLflow experiment |
+| `config/settings.yaml` | Catalog, schema, $ assumptions, thresholds, LLM endpoint |
+| `agent/tools.py` | Spark SQL tools: analysis, diagnostic, draft_outreach |
+| `agent/registry.py` | Tool descriptions + argument schemas shown to the LLM, and dispatch |
+| `agent/llm.py` | Model Serving client |
+| `agent/agentic.py` | The LLM tool-calling loop, guards, fallback |
+| `agent/briefing.py` | Ranking/formatting + the original fixed-pipeline agent (the fallback) |
+| `agent/tracking.py` | MLflow logging + recommendation ledger |
+| `agent/measure.py` | Contacted-vs-holdout outcome comparison |
+| `notebooks/04_run_agentic.py` | Agent demo + logging |
+| `notebooks/05_measure_outcomes.py` | Measure step |
+| `databricks.yml`, `resources/` | DAB: variables, job (2 tasks), MLflow experiment |
 
 ---
 
 ## Tool details
 
-### 1. `find_stale_leads` (Leads)
-- **SQL:** open leads older than 3 days
-- **Impact:** stale_count × $150 eval × 20% conversion
+**Analysis** (each returns `estimated_impact_usd`)
+- `find_stale_leads`: open leads older than the stale threshold; impact = count × eval revenue × conversion rate.
+- `find_churn_risk_patients`: Active patients above the churn threshold; impact = count × visits × visit revenue × re-engagement rate.
+- `find_revenue_leaks`: no-show rate, Package Plan share, cheapest marketing channel.
+- `find_top_lead_sources`: best-converting sources among open leads.
 
-### 2. `find_churn_risk_patients` (Retention)
-- **SQL:** Active patients with churn_risk_score ≥ 0.75
-- **Impact:** count × 4 visits × $75 × 25% re-engage rate
+**Diagnostic**
+- `diagnose_no_shows`: no-show rate by appointment type, booking channel, booking lead time and location versus the clinic baseline; only segments beating it by `min_lift_pts` count.
+- `diagnose_lead_response`: win rate by speed of first response, with a two-proportion z-test (`min_z_score`).
 
-### 3. `find_revenue_leaks` (Pricing)
-- **SQL:** no-show rate, Package Plan %, best marketing channel
-- **Impact:** recoverable no-show revenue + package upsell opportunity
-
-### 4. `find_top_lead_sources` (Leads)
-- **SQL:** best converting sources among open leads
-- **Impact:** prioritization for today's calls
-
-### 5. `rank_actions` (Agent brain)
-- Pure Python — sorts all tool outputs by `estimated_impact_usd`
-- Returns top 5 for the briefing
+**Action**
+- `draft_outreach`: top N people for `stale_leads` or `churn_risk_patients`, a message template, and an equal-size holdout (the next people in priority order, not contacted).
 
 ---
 
@@ -84,8 +92,4 @@ databricks bundle run revenue_briefing -t dev
 
 ---
 
-## 2-minute pitch outline
-
-1. **Problem (30s):** Clinics lose revenue across leads, churn, and pricing — no single view of what to do *today*.
-2. **Solution (45s):** Revenue Briefing Agent on Databricks — one question, four tools, ranked $ impact.
-3. **How built (45s):** Synthetic UC data, Spark SQL tools, Python orchestrator, MLflow, DAB deploy.
+See [PITCH.md](PITCH.md) for the 2-minute pitch.

@@ -161,3 +161,16 @@ def test_final_briefing_appends_diagnostics_and_outreach(monkeypatch):
     assert text.startswith("Headline.")
     assert "## Why (diagnostics)" in text and "Evenly spread." in text
     assert "Hi {first_name}!" in text and "LD1" in text
+
+
+def test_off_topic_reply_without_figures_passes_through():
+    result = make_agent([say("I can help with leads, retention and no-shows.")]).run("What is the weather?")
+    assert result.briefing_text.startswith("I can help")
+    assert result.actions == []
+
+
+def test_untooled_answer_with_numbers_falls_back(monkeypatch):
+    sentinel = object()
+    monkeypatch.setattr(AgenticBriefingAgent, "_fallback", lambda self, q: sentinel)
+    events = list(make_agent([say("You will make $500,000 today.")]).run_stream("q"))
+    assert events[-1].type == "fallback" and events[-1].data["result"] is sentinel
