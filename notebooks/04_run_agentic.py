@@ -23,14 +23,17 @@ repo_root = "/Workspace" + nb_path.rsplit("/notebooks/", 1)[0]
 sys.path.insert(0, repo_root)
 
 from agent.agentic import AgenticBriefingAgent
+from agent.llm import DatabricksLLM
 
 dbutils.widgets.text("catalog", "workspace")
 dbutils.widgets.text("schema", "chiro_hackathon")
 dbutils.widgets.text("question", "What should we focus on today to maximize revenue?")
+dbutils.widgets.text("llm_endpoint", "")  # blank = use agent.llm_endpoint from config/settings.yaml
 
 catalog = dbutils.widgets.get("catalog")
 schema = dbutils.widgets.get("schema")
 question = dbutils.widgets.get("question")
+llm_endpoint = dbutils.widgets.get("llm_endpoint")
 
 # COMMAND ----------
 
@@ -39,7 +42,8 @@ question = dbutils.widgets.get("question")
 
 # COMMAND ----------
 
-agent = AgenticBriefingAgent(spark, catalog=catalog, schema=schema)  # noqa: F821
+llm = DatabricksLLM(llm_endpoint) if llm_endpoint else None
+agent = AgenticBriefingAgent(spark, catalog=catalog, schema=schema, llm=llm)  # noqa: F821
 result = None
 
 for event in agent.run_stream(question):

@@ -1,45 +1,32 @@
-# Databricks Asset Bundle — deploy with:
-#   databricks bundle validate
-#   databricks bundle deploy -t dev
+# Databricks Asset Bundle (Declarative Automation Bundle).
+#
+# No workspace URL lives in this file. The CLI takes the workspace from your profile:
+#   databricks auth login --host https://<your-workspace>.cloud.databricks.com
+#   databricks bundle validate -t dev
+#   databricks bundle deploy   -t dev
 #   databricks bundle run revenue_briefing -t dev
+#
+# To target another workspace: log in to it (or pass --profile) — no code changes.
 
 bundle:
   name: acm-xorbix-hackathon
 
-workspace:
-  host: ${var.databricks_host}
+include:
+  - resources/*.yml
 
 variables:
-  databricks_host:
-    description: Your Free Edition workspace URL
-    default: https://dbc-1ee896cd-3f9f.cloud.databricks.com
   catalog:
+    description: Unity Catalog catalog holding the synthetic clinic tables
     default: workspace
   schema:
+    description: Schema holding the synthetic clinic tables
     default: chiro_hackathon
-
-resources:
-  jobs:
-    revenue_briefing:
-      name: "[${bundle.target}] Revenue Briefing Agent"
-      max_concurrent_runs: 1
-      environments:
-        - environment_key: Default
-          spec:
-            environment_version: "3"
-      tasks:
-        - task_key: run_briefing
-          notebook_task:
-            notebook_path: ./notebooks/03_run_briefing.py
-            base_parameters:
-              catalog: ${var.catalog}
-              schema: ${var.schema}
-              question: "What should we focus on today to maximize revenue?"
-          environment_key: Default
-
-  experiments:
-    revenue_briefing:
-      name: /Users/${workspace.current_user.userName}/revenue_briefing_agent
+  llm_endpoint:
+    description: Model Serving endpoint that drives the agent (must support tool calling)
+    default: databricks-meta-llama-3-3-70b-instruct
+  question:
+    description: Question the scheduled/run job asks the agent
+    default: "What should we focus on today to maximize revenue?"
 
 sync:
   include:
@@ -51,5 +38,3 @@ targets:
   dev:
     mode: development
     default: true
-    workspace:
-      root_path: /Users/${workspace.current_user.userName}/.bundle/${bundle.name}/${bundle.target}

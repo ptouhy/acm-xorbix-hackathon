@@ -1,0 +1,23 @@
+resources:
+  jobs:
+    revenue_briefing:
+      name: "[${bundle.target}] Revenue Briefing Agent"
+      max_concurrent_runs: 1
+      environments:
+        - environment_key: Default
+          spec:
+            environment_version: "3"
+      tasks:
+        - task_key: run_agentic_briefing
+          notebook_task:
+            notebook_path: ../notebooks/04_run_agentic.py
+            base_parameters:
+              catalog: ${var.catalog}
+              schema: ${var.schema}
+              llm_endpoint: ${var.llm_endpoint}
+              question: ${var.question}
+          environment_key: Default
+
+  experiments:
+    briefing_experiment:
+      name: /Users/${workspace.current_user.userName}/revenue_briefing_agent
