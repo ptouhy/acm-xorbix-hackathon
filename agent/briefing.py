@@ -31,8 +31,13 @@ class BriefingResult:
 
 
 def rank_actions(tool_results: list[dict]) -> list[dict]:
-    """Sort tool results by estimated_impact_usd → top 5 actions."""
-    ranked = sorted(tool_results, key=lambda r: r.get("estimated_impact_usd", 0), reverse=True)
+    """Sort analysis results by estimated_impact_usd → top 5 actions.
+
+    Diagnostic and action tools explain or act on those findings, so ranking them too
+    would double-count the same dollars.
+    """
+    analysis = [r for r in tool_results if r.get("kind", "analysis") == "analysis"]
+    ranked = sorted(analysis, key=lambda r: r.get("estimated_impact_usd", 0), reverse=True)
     actions = []
     for i, r in enumerate(ranked[:5], start=1):
         actions.append({

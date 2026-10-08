@@ -3,7 +3,12 @@ Tool registry — describes each tool to the LLM (JSON schema) and dispatches ca
 
 STEP EXPLANATION:
   The LLM never touches Spark. It sees a name + description for each tool,
-  decides which to call, and we run the matching Python function.
+  decides which to call (and with what arguments), and we run the matching Python function.
+
+  Tool kinds:
+    analysis    — measures an opportunity and estimates $ impact (ranked by rank_actions)
+    diagnostic  — explains WHY something is happening (Reason)
+    action      — produces a concrete next step, e.g. a contact list + message (Act)
 """
 
 from __future__ import annotations
@@ -11,6 +16,9 @@ from __future__ import annotations
 from typing import Any, Callable
 
 from agent.tools import (
+    diagnose_lead_response,
+    diagnose_no_shows,
+    draft_outreach,
     find_churn_risk_patients,
     find_revenue_leaks,
     find_stale_leads,
@@ -19,29 +27,70 @@ from agent.tools import (
 
 _NO_ARGS = {"type": "object", "properties": {}, "additionalProperties": False}
 
-# name -> (function, description shown to the LLM)
-_SPARK_TOOLS: dict[str, tuple[Callable[..., dict], str]] = {
+_OUTREACH_ARGS = {
+    "type": "object",
+    "properties": {
+        "segment": {
+            "type": "string",
+            "enum": ["stale_leads", "churn_risk_patients"],
+            "description": "Which group of people to contact.",
+        },
+        "limit": {
+            "type": "integer",
+            "description": "How many people to put on today's call list (1-25, default 10).",
+        },
+    },
+    "required": ["segment"],
+    "additionalProperties": False,
+}
+
+# name -> (function, description shown to the LLM, JSON-schema for arguments)
+_SPARK_TOOLS: dict[str, tuple[Callable[..., dict], str, dict]] = {
     "find_stale_leads": (
         find_stale_leads,
-        "LEADS. Counts open leads (New/Contacted/Qualified) that have gone unworked past the "
-        "stale threshold, plus slow-response stats. Use for questions about pipeline, follow-up, "
+        "ANALYSIS / LEADS. Counts open leads (New/Contacted/Qualified) that have gone unworked past "
+        "the stale threshold, plus slow-response stats. Use for questions about pipeline, follow-up, "
         "or new patient acquisition.",
+        _NO_ARGS,
     ),
     "find_top_lead_sources": (
         find_top_lead_sources,
-        "LEADS. Ranks the best-converting lead sources among open leads so staff know whom to "
-        "call first. Use for questions about which sources or channels to prioritize for outreach.",
+        "ANALYSIS / LEADS. Ranks the best-converting lead sources among open leads so staff know "
+        "whom to call first. Use for questions about which sources or channels to prioritize.",
+        _NO_ARGS,
     ),
     "find_churn_risk_patients": (
         find_churn_risk_patients,
-        "RETENTION. Counts Active patients with a high churn-risk score and estimates the revenue "
-        "recoverable by re-engaging them. Use for questions about retention, dropouts, or lapsed patients.",
+        "ANALYSIS / RETENTION. Counts Active patients with a high churn-risk score and estimates the "
+        "revenue recoverable by re-engaging them. Use for retention, dropout, or lapsed-patient questions.",
+        _NO_ARGS,
     ),
     "find_revenue_leaks": (
         find_revenue_leaks,
-        "PRICING. Finds revenue leaks: appointment no-show rate, share of visits on Package Plans, "
-        "and the cheapest marketing channel per conversion. Use for questions about pricing, "
-        "packages, no-shows, or marketing spend.",
+        "ANALYSIS / PRICING. Finds revenue leaks: appointment no-show rate, share of visits on Package "
+        "Plans, and the cheapest marketing channel per conversion. Use for pricing, packages, "
+        "no-shows, or marketing-spend questions.",
+        _NO_ARGS,
+    ),
+    "diagnose_no_shows": (
+        diagnose_no_shows,
+        "DIAGNOSTIC (explains WHY). Breaks no-shows down by appointment type, booking channel, "
+        "booking lead time and location, and returns the segments running above the clinic baseline. "
+        "Use when asked why appointments are being missed or where to aim reminders.",
+        _NO_ARGS,
+    ),
+    "diagnose_lead_response": (
+        diagnose_lead_response,
+        "DIAGNOSTIC (explains WHY). Tests whether speed of first response changes lead conversion. "
+        "Use when asked why leads are not converting or whether response time matters.",
+        _NO_ARGS,
+    ),
+    "draft_outreach": (
+        draft_outreach,
+        "ACTION. Builds today's prioritized contact list plus a message template for a segment "
+        "('stale_leads' or 'churn_risk_patients'). Use when staff ask what to do next, who to call, "
+        "or for outreach copy. Personalize the returned message_template in your answer.",
+        _OUTREACH_ARGS,
     ),
 }
 
@@ -53,16 +102,16 @@ def tool_specs() -> list[dict]:
     specs = [
         {
             "type": "function",
-            "function": {"name": name, "description": desc, "parameters": _NO_ARGS},
+            "function": {"name": name, "description": desc, "parameters": params},
         }
-        for name, (_, desc) in _SPARK_TOOLS.items()
+        for name, (_, desc, params) in _SPARK_TOOLS.items()
     ]
     specs.append({
         "type": "function",
         "function": {
             "name": RANK_TOOL,
             "description": (
-                "Ranks every analysis result gathered so far by estimated dollar impact. "
+                "Ranks the ANALYSIS tool results gathered so far by estimated dollar impact. "
                 "Call this once, after you have run the analysis tools you need."
             ),
             "parameters": _NO_ARGS,
@@ -75,6 +124,8 @@ def spark_tool_names() -> list[str]:
     return list(_SPARK_TOOLS)
 
 
-def run_spark_tool(name: str, spark: Any, catalog: str, schema: str, settings: dict) -> dict:
-    fn, _ = _SPARK_TOOLS[name]
-    return fn(spark, catalog, schema, settings)
+def run_spark_tool(
+    name: str, spark: Any, catalog: str, schema: str, settings: dict, args: dict | None = None
+) -> dict:
+    fn = _SPARK_TOOLS[name][0]
+    return fn(spark, catalog, schema, settings, **(args or {}))

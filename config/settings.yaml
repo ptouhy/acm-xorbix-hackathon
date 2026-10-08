@@ -10,15 +10,18 @@ economics:
   avg_recoverable_visits_per_reengaged_patient: 4
   churn_reengagement_rate: 0.25
   lead_conversion_rate: 0.20
+  no_show_recovery_rate: 0.5  # share of excess no-shows recovered by targeted reminders
 
 thresholds:
   stale_lead_days: 3
   high_churn_risk: 0.75
   slow_response_hours: 24
+  min_segment_appts: 500  # ignore tiny segments in no-show diagnostics
+  min_lift_pts: 1.0  # a segment must beat the baseline by this many points to count as a driver
 
 agent:
   name: Revenue Briefing Agent
   default_question: "What should we focus on today to maximize revenue?"
   llm_endpoint: databricks-meta-llama-3-3-70b-instruct  # Foundation Model serving endpoint
   temperature: 0.1
-  max_steps: 6  # max LLM turns before falling back to ranked tool output
+  max_steps: 8  # max LLM turns before falling back to ranked tool output

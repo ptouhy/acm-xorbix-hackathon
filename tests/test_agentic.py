@@ -89,6 +89,28 @@ def test_rank_before_any_tool_returns_error_and_llm_recovers():
     assert result.actions[0]["tool"] == "find_stale_leads"
 
 
+def test_tool_arguments_are_passed_and_cached_per_argument_set(monkeypatch):
+    seen = []
+
+    def fake(name, spark, catalog, schema, settings, args=None):
+        seen.append((name, args))
+        return {"tool": name, "kind": "action", "focus": "leads", "estimated_impact_usd": 10,
+                "recommendation": "r", "targets": [], "message_template": "m",
+                "metrics": {"segment": args["segment"], "segment_size": 1, "batch_size": 0}}
+
+    monkeypatch.setattr(agentic, "run_spark_tool", fake)
+    a = {"segment": "stale_leads"}
+    b = {"segment": "churn_risk_patients"}
+    agent = make_agent([
+        use({"id": "1", "name": "draft_outreach", "arguments": a}),
+        use({"id": "2", "name": "draft_outreach", "arguments": a},
+            {"id": "3", "name": "draft_outreach", "arguments": b}),
+        say("done"),
+    ])
+    agent.run("q")
+    assert seen == [("draft_outreach", a), ("draft_outreach", b)]  # second call to `a` was cached
+
+
 def test_duplicate_call_is_cached_and_unknown_tool_is_reported():
     agent = make_agent([
         use(call("find_stale_leads", "1")),
@@ -116,3 +138,26 @@ def test_stops_at_max_steps_and_still_returns_ranked_result():
     result = agent.run("q")
     assert agent.llm.calls == 3
     assert result.actions  # formatted deterministically since LLM never gave a final answer
+
+
+def test_final_briefing_appends_diagnostics_and_outreach(monkeypatch):
+    outs = {
+        "find_stale_leads": {"tool": "find_stale_leads", "focus": "leads", "estimated_impact_usd": 1000,
+                             "recommendation": "Call", "metrics": {}},
+        "diagnose_no_shows": {"tool": "diagnose_no_shows", "kind": "diagnostic", "focus": "pricing",
+                              "estimated_impact_usd": 0, "recommendation": "Evenly spread.", "metrics": {}},
+        "draft_outreach": {"tool": "draft_outreach", "kind": "action", "focus": "leads",
+                           "estimated_impact_usd": 30, "recommendation": "Contact 1 of 5.",
+                           "metrics": {"segment": "stale_leads", "segment_size": 5, "batch_size": 1},
+                           "message_template": "Hi {first_name}!",
+                           "targets": [{"lead_id": "LD1", "source": "Referral"}]},
+    }
+    monkeypatch.setattr(agentic, "run_spark_tool", lambda name, *a: outs[name])
+    agent = make_agent([
+        use(call("find_stale_leads", "1"), call("diagnose_no_shows", "2"), call("draft_outreach", "3")),
+        say("Headline."),
+    ])
+    text = agent.run("q").briefing_text
+    assert text.startswith("Headline.")
+    assert "## Why (diagnostics)" in text and "Evenly spread." in text
+    assert "Hi {first_name}!" in text and "LD1" in text

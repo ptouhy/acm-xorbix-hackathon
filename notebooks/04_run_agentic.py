@@ -48,7 +48,8 @@ result = None
 
 for event in agent.run_stream(question):
     if event.type == "tool_call":
-        print(f"→ calling {event.data['tool']}")
+        args = event.data.get("args")
+        print(f"→ calling {event.data['tool']}" + (f" {args}" if args else ""))
     elif event.type == "tool_result":
         out = event.data["output"]
         if "error" in out:
@@ -57,6 +58,8 @@ for event in agent.run_stream(question):
             print(f"  ✓ ranked {len(out['ranked_actions'])} actions, total ${out['total_estimated_impact_usd']:,.0f}")
         else:
             print(f"  ✓ {event.data['tool']}: ${out.get('estimated_impact_usd', 0):,.0f}")
+            if out.get("kind") in ("diagnostic", "action"):
+                print(f"    ↳ {out['recommendation']}")
     elif event.type == "fallback":
         print(f"⚠ LLM unavailable, using deterministic briefing ({event.data['reason']})")
         result = event.data["result"]

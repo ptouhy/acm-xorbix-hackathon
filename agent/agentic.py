@@ -24,11 +24,19 @@ Your job: answer the staff member's question with a short, prioritized plan that
 
 Rules:
 - Choose only the tools relevant to the question. A broad question ("what should we focus on?")
-  needs all analysis tools; a narrow one ("how are our leads?") needs only the lead tools.
+  needs the analysis tools; a narrow one ("how are our leads?") needs only the lead tools.
+- Tool kinds: ANALYSIS tools size an opportunity in dollars. DIAGNOSTIC tools explain WHY
+  (use them for "why" questions, and for the top pricing/leads finding on broad questions).
+  The ACTION tool draft_outreach builds today's contact list and message.
 - Never invent numbers or do your own arithmetic. Every figure you state must come from a tool
   result. For the total, copy total_estimated_impact_usd from rank_actions exactly.
 - Always run at least one analysis tool before anything else. rank_actions only works AFTER
   analysis tools have returned results; call it once, last, then write the final answer.
+- For the top-ranked action that involves contacting people (stale leads or churn risk), call
+  draft_outreach and include a short, personalized version of its message_template plus the
+  first few targets, so staff can act immediately.
+- If a diagnostic tool ran, the answer MUST include a "Why" section quoting its specific findings
+  (segment names and rates) before the action list. Do not replace findings with generic advice.
 - Final answer: markdown, a one-line headline with the total estimated opportunity, then a
   numbered list of actions ordered by estimated impact. Each action: the focus area
   (LEADS / RETENTION / PRICING), the $ impact, and a concrete next step. No filler.
@@ -44,6 +52,24 @@ class AgentEvent:
 
     def to_dict(self) -> dict:
         return {"type": self.type, **self.data}
+
+
+def _evidence_sections(outputs: list[dict]) -> str:
+    """Append diagnostic findings and outreach lists verbatim, so they never depend on the LLM."""
+    why = [o for o in outputs if o.get("kind") == "diagnostic"]
+    acts = [o for o in outputs if o.get("kind") == "action"]
+    lines: list[str] = []
+    if why:
+        lines += ["", "## Why (diagnostics)"] + [f"- **{o['tool']}**: {o['recommendation']}" for o in why]
+    for o in acts:
+        m = o["metrics"]
+        lines += ["", f"## Act now: {m['segment'].replace('_', ' ')} ({m['batch_size']} of {m['segment_size']:,})",
+                  f"_{o['recommendation']}_", "", f"> {o['message_template']}", ""]
+        for t in o["targets"][:5]:
+            ident = t.get("lead_id") or t.get("patient_id")
+            detail = ", ".join(f"{k}={v}" for k, v in t.items() if k not in ("lead_id", "patient_id"))
+            lines.append(f"- {ident}: {detail}")
+    return "\n".join(lines)
 
 
 class AgenticBriefingAgent:
@@ -103,8 +129,8 @@ class AgenticBriefingAgent:
                     ],
                 })
                 for call in calls:
-                    yield AgentEvent("tool_call", {"tool": call["name"]})
-                    output = self._execute(call["name"], collected)
+                    yield AgentEvent("tool_call", {"tool": call["name"], "args": call["arguments"]})
+                    output = self._execute(call["name"], call["arguments"], collected)
                     yield AgentEvent("tool_result", {"tool": call["name"], "output": output})
                     messages.append({
                         "role": "tool",
@@ -129,7 +155,7 @@ class AgenticBriefingAgent:
 
         actions = rank_actions(outputs)
         total = sum(a["estimated_impact_usd"] for a in actions)
-        text = final_text or format_briefing(question, actions, total)
+        text = (final_text or format_briefing(question, actions, total)) + _evidence_sections(outputs)
         yield AgentEvent("final", {"result": BriefingResult(
             question=question,
             actions=actions,
@@ -140,10 +166,10 @@ class AgenticBriefingAgent:
 
     # -- internals ----------------------------------------------------------
 
-    def _execute(self, name: str, collected: dict[str, dict]) -> dict:
+    def _execute(self, name: str, args: dict, collected: dict[str, dict]) -> dict:
         """Run one tool call. Errors are returned to the LLM instead of raised."""
         if name == RANK_TOOL:
-            if not collected:
+            if not any(r.get("kind", "analysis") == "analysis" for r in collected.values()):
                 return {"error": "Nothing to rank yet. Call the relevant analysis tools first, then call rank_actions."}
             actions = rank_actions(list(collected.values()))
             return {
@@ -152,13 +178,14 @@ class AgenticBriefingAgent:
             }
         if name not in spark_tool_names():
             return {"error": f"Unknown tool '{name}'. Available: {spark_tool_names() + [RANK_TOOL]}"}
-        if name in collected:
-            return {**collected[name], "note": "already run; cached result"}
+        key = name if not args else f"{name}:{json.dumps(args, sort_keys=True)}"
+        if key in collected:
+            return {**collected[key], "note": "already run; cached result"}
         try:
-            collected[name] = run_spark_tool(name, self.spark, self.catalog, self.schema, self.settings)
+            collected[key] = run_spark_tool(name, self.spark, self.catalog, self.schema, self.settings, args)
         except Exception as exc:
             return {"error": f"{type(exc).__name__}: {exc}"}
-        return collected[name]
+        return collected[key]
 
     def _fallback(self, question: str) -> BriefingResult:
         return RevenueBriefingAgent(self.spark, self.catalog, self.schema).run(question)
