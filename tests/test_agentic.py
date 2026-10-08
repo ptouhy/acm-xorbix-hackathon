@@ -174,3 +174,11 @@ def test_untooled_answer_with_numbers_falls_back(monkeypatch):
     monkeypatch.setattr(AgenticBriefingAgent, "_fallback", lambda self, q: sentinel)
     events = list(make_agent([say("You will make $500,000 today.")]).run_stream("q"))
     assert events[-1].type == "fallback" and events[-1].data["result"] is sentinel
+
+
+def test_plan_is_recorded_shown_and_prepended_to_the_briefing():
+    plan_call = {"id": "p", "name": "record_plan", "arguments": {"steps": ["size leads", "draft outreach"]}}
+    agent = make_agent([use(plan_call, call("find_stale_leads", "1")), say("Done.")])
+    events = list(agent.run_stream("q"))
+    assert [e.data["steps"] for e in events if e.type == "plan"] == [["size leads", "draft outreach"]]
+    assert events[-1].data["result"].briefing_text.startswith("**Plan:** size leads → draft outreach")

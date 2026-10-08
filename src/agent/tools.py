@@ -76,21 +76,27 @@ def find_stale_leads(spark: Any, catalog: str, schema: str, settings: dict) -> d
     }
 
 
+def _last_visit_cte(catalog: str, schema: str) -> str:
+    return (f"SELECT patient_id, MAX(visit_date) AS last_visit, COUNT(*) AS visits "
+            f"FROM {_table(catalog, schema, 'visits')} GROUP BY patient_id")
+
+
 def find_churn_risk_patients(spark: Any, catalog: str, schema: str, settings: dict) -> dict:
-    """RETENTION: active patients likely to churn."""
+    """RETENTION: Active patients who have stopped coming (last visit 60-180 days ago)."""
     econ = settings["economics"]
-    threshold = settings["thresholds"]["high_churn_risk"]
+    th = settings["thresholds"]
+    lo, hi = th["lapsing_min_days"], th["lapsing_max_days"]
     t = _table(catalog, schema, "patients")
 
     row = spark.sql(f"""
-        SELECT
-            COUNT(*) AS high_risk_count,
-            ROUND(AVG(churn_risk_score), 3) AS avg_churn_score
-        FROM {t}
-        WHERE status = 'Active' AND churn_risk_score >= {threshold}
+        SELECT COUNT(*) AS lapsing_count, ROUND(AVG(lv.visits), 1) AS avg_visits
+        FROM {t} p JOIN ({_last_visit_cte(catalog, schema)}) lv ON lv.patient_id = p.patient_id
+        WHERE p.status = 'Active'
+          AND lv.last_visit <= date_sub(current_date(), {lo})
+          AND lv.last_visit >= date_sub(current_date(), {hi})
     """).collect()[0]
 
-    count = int(row.high_risk_count or 0)
+    count = int(row.lapsing_count or 0)
     per_patient = econ["avg_visit_revenue"] * econ["avg_recoverable_visits_per_reengaged_patient"]
     impact = count * per_patient * econ["churn_reengagement_rate"]
 
@@ -98,14 +104,15 @@ def find_churn_risk_patients(spark: Any, catalog: str, schema: str, settings: di
         "tool": "find_churn_risk_patients",
         "focus": "retention",
         "metrics": {
-            "high_risk_active_patients": count,
-            "avg_churn_score": float(row.avg_churn_score or 0),
-            "churn_threshold": threshold,
+            "lapsing_active_patients": count,
+            "window_days": f"{lo}-{hi} since last visit",
+            "avg_past_visits": float(row.avg_visits or 0),
         },
         "estimated_impact_usd": round(impact, 2),
         "recommendation": (
-            f"Re-engagement campaign for {count:,} Active patients with churn risk ≥ {threshold:.0%}. "
-            "Offer care-plan check-in + one promotional visit."
+            f"Re-engage {count:,} Active patients whose last visit was {lo}-{hi} days ago "
+            f"(they averaged {float(row.avg_visits or 0):.1f} past visits). "
+            "Offer a care-plan check-in + one promotional visit."
         ),
     }
 
@@ -395,11 +402,42 @@ _MESSAGES = {
 }
 
 
+QUEUE_TABLE = "outreach_queue"
+QUEUE_DDL = "batch_id STRING, queued_at TIMESTAMP, segment STRING, target_id STRING, message_template STRING, status STRING"
+
+
+def _stage_in_queue(spark: Any, catalog: str, schema: str, settings: dict, segment: str,
+                    targets: list[dict], message: str) -> dict:
+    """ACTION: write the call list to outreach_queue as 'pending_approval'. People already pending are skipped."""
+    if not settings["agent"].get("stage_outreach", True) or not targets:
+        return {"staged": False}
+    import uuid
+    from datetime import datetime, timezone
+
+    try:
+        table = _table(catalog, schema, QUEUE_TABLE)
+        ids = [t.get("lead_id") or t.get("patient_id") for t in targets]
+        pending: set[str] = set()
+        if spark.catalog.tableExists(table):
+            pending = {r.target_id for r in spark.sql(
+                f"SELECT target_id FROM {table} WHERE status = 'pending_approval' AND segment = '{segment}'").collect()}
+        new_ids = [i for i in ids if i not in pending]
+        batch_id = uuid.uuid4().hex[:12]
+        if new_ids:
+            now = datetime.now(timezone.utc)
+            rows = [(batch_id, now, segment, i, message, "pending_approval") for i in new_ids]
+            spark.createDataFrame(rows, schema=QUEUE_DDL).write.format("delta").mode("append").saveAsTable(table)
+        return {"staged": True, "batch_id": batch_id, "status": "pending_approval",
+                "newly_staged": len(new_ids), "already_pending": len(ids) - len(new_ids), "table": table}
+    except Exception as exc:  # staging must never break the briefing
+        return {"staged": False, "error": f"{type(exc).__name__}: {exc}"}
+
+
 def draft_outreach(
     spark: Any, catalog: str, schema: str, settings: dict,
     segment: str | None = None, limit: int = 10, **_: Any,
 ) -> dict:
-    """ACT: prioritized contact list + message template for a segment (synthetic IDs only)."""
+    """ACT: prioritized contact list + message template for a segment, staged for approval (synthetic IDs only)."""
     econ = settings["economics"]
     limit = max(1, min(int(limit or 10), 25))
 
@@ -429,15 +467,18 @@ def draft_outreach(
         focus, why = "leads", "Qualified and warmest (most touchpoints) leads first."
 
     elif segment == "churn_risk_patients":
-        threshold = settings["thresholds"]["high_churn_risk"]
+        th = settings["thresholds"]
+        lo, hi = th["lapsing_min_days"], th["lapsing_max_days"]
         t = _table(catalog, schema, "patients")
-        where = f"status = 'Active' AND churn_risk_score >= {threshold}"
-        total = int(spark.sql(f"SELECT COUNT(*) AS n FROM {t} WHERE {where}").collect()[0].n)
+        src = (f"{t} p JOIN ({_last_visit_cte(catalog, schema)}) lv ON lv.patient_id = p.patient_id "
+               f"WHERE p.status = 'Active' AND lv.last_visit <= date_sub(current_date(), {lo}) "
+               f"AND lv.last_visit >= date_sub(current_date(), {hi})")
+        total = int(spark.sql(f"SELECT COUNT(*) AS n FROM {src}").collect()[0].n)
         rows = spark.sql(f"""
-            SELECT patient_id, home_location_id AS location_id, tenure_months,
-                   lifetime_visit_count, churn_risk_score
-            FROM {t} WHERE {where}
-            ORDER BY churn_risk_score DESC, lifetime_visit_count DESC
+            SELECT p.patient_id, p.home_location_id AS location_id, p.tenure_months,
+                   lv.visits AS past_visits, lv.last_visit
+            FROM {src}
+            ORDER BY lv.visits DESC, lv.last_visit DESC
             LIMIT {limit * 2}
         """).collect()
         holdout_ids = [r.patient_id for r in rows[limit:]]
@@ -445,26 +486,30 @@ def draft_outreach(
         targets = [{
             "patient_id": r.patient_id, "location_id": r.location_id,
             "tenure_months": int(r.tenure_months),
-            "lifetime_visits": int(r.lifetime_visit_count),
-            "churn_risk_score": float(r.churn_risk_score),
+            "past_visits": int(r.past_visits),
+            "last_visit": str(r.last_visit),
         } for r in rows]
         per_patient = econ["avg_visit_revenue"] * econ["avg_recoverable_visits_per_reengaged_patient"]
         impact = len(targets) * per_patient * econ["churn_reengagement_rate"]
-        focus, why = "retention", "Highest churn risk, then most loyal (lifetime visits), first."
+        focus, why = "retention", "Most loyal (most past visits) first."
 
     else:
         raise ValueError("segment must be 'stale_leads' or 'churn_risk_patients'")
+
+    queue = _stage_in_queue(spark, catalog, schema, settings, segment, targets, _MESSAGES[segment])
 
     return {
         "tool": "draft_outreach",
         "kind": "action",
         "focus": focus,
         "metrics": {"segment": segment, "segment_size": total, "batch_size": len(targets)},
+        "queue": queue,
         "targets": targets,
         "holdout_ids": holdout_ids,
         "message_template": _MESSAGES[segment],
         "estimated_impact_usd": round(impact, 2),
         "recommendation": (
-            f"Contact these {len(targets)} of {total:,} {segment.replace('_', ' ')} today. {why}"
+            f"Contact these {len(targets)} of {total:,} {segment.replace('_', ' ')} today. {why} "
+            + (f"Staged {queue['newly_staged']} in outreach_queue (status: pending_approval)." if queue.get("staged") else "")
         ),
     }

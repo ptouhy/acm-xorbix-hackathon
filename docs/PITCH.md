@@ -2,16 +2,16 @@
 
 ## Business problem (0:00–0:40)
 
-Our clinic network has to grow from **$100M to $250M ARR**. Growth stalls in places nobody sees on a dashboard: **leads go cold**, **patients quietly leave**, and **appointments are missed**. Our synthetic network has 45,000 leads, 60,000 patients and 350,000 appointments. In one snapshot we find **570 leads that went quiet in the last month** (plus 2,700 dormant ones worth a win-back), **6,500 active patients at high churn risk**, and about **8,800 no-shows in the last year** (10%). A manager can't work through that by hand each morning. They need to know **what to do today and what it's worth**.
+Our clinic network has to grow from **$100M to $250M ARR**. Growth stalls in places nobody sees on a dashboard: **leads go cold**, **patients quietly leave**, and **appointments are missed**. Our synthetic network has 45,000 leads, 60,000 patients and 350,000 appointments. In one snapshot we find **570 leads that went quiet in the last month** (plus 2,700 dormant ones worth a win-back), **5,800 active patients who stopped visiting 2 to 6 months ago**, and about **8,800 no-shows in the last year** (10%). A manager can't work through that by hand each morning. They need to know **what to do today and what it's worth**.
 
 ## Solution (0:40–1:30)
 
 The **Revenue Briefing Agent** is an LLM that works through the question the way an analyst would: **Observe → Reason → Decide → Act → Measure**.
 
-- **Observe:** it chooses its own tools. Ask a broad question and it sizes leads, retention and pricing. Ask a narrow one and it uses only what it needs.
+- **Plan and observe:** it states a short plan, then chooses its own tools. Ask a broad question and it sizes leads, retention and pricing. Ask a narrow one and it uses only what it needs.
 - **Reason:** diagnostic tools explain *why*. They also say so when a pattern is just noise. For example, response time had no statistically meaningful effect on conversion, so the agent doesn't recommend an SLA.
 - **Decide:** it ranks actions by estimated dollar impact. The totals are computed in code, never by the LLM.
-- **Act:** it builds today's call list, the warmest 10 leads or the highest-risk patients, with a ready-to-send message.
+- **Act:** it builds today's call list, the warmest leads or the most loyal lapsing patients, with a ready-to-send message, and **stages it in an outreach queue** where staff approve it. The agent acts; a human signs off.
 - **Measure:** every list is saved with a same-size **holdout group**. After outreach, the agent compares contacted vs. holdout to check whether it worked.
 
 **Live demo:** ask *"What should we focus on today?"*, then *"Which patients are about to leave and who should we call first?"*
@@ -35,4 +35,4 @@ The **Revenue Briefing Agent** is an LLM that works through the question the way
 
 ## Demo numbers (replace with your live run)
 
-Total opportunity about **$0.9M a year**: retention about $0.62M, pricing (no-shows) about $0.25M, leads about $0.03M. That's roughly 15% of the data's $6.1M trailing-12-month revenue.
+Total opportunity about **$0.84M**: retention about $0.56M, pricing (no-shows) about $0.25M a year, leads about $0.03M. That's roughly 14% of the data's $6.1M trailing-12-month revenue.

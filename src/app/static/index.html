@@ -1,0 +1,308 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Revenue Briefing Agent</title>
+<style>
+:root {
+  --bg: #f5f6f8; --panel: #ffffff; --text: #16202c; --muted: #5d6b7c; --border: #dfe3e9;
+  --accent: #1f6feb; --accent-text: #ffffff; --soft: #eef1f5; --ok: #0f8a5f; --warn: #b36b00; --err: #c0392b;
+  --leads: #2f6fe4; --retention: #0f9d74; --pricing: #d98200;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0f141a; --panel: #171e27; --text: #e8edf3; --muted: #93a1b3; --border: #2a3441;
+    --accent: #4c8dff; --accent-text: #0b1118; --soft: #1e2733; --ok: #3ccf9b; --warn: #f0a93a; --err: #ff7b6b;
+    --leads: #6ea0ff; --retention: #3ccf9b; --pricing: #f0a93a;
+  }
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--text); font: 15px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+.wrap { max-width: 1240px; margin: 0 auto; padding: 0 20px 48px; }
+header { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 22px 0 14px; flex-wrap: wrap; }
+h1 { font-size: 20px; margin: 0; letter-spacing: -.2px; }
+.sub { color: var(--muted); font-size: 13px; }
+.pill { font-size: 12px; color: var(--muted); border: 1px solid var(--border); border-radius: 999px; padding: 3px 10px; background: var(--panel); }
+nav { display: flex; gap: 4px; border-bottom: 1px solid var(--border); margin-bottom: 18px; }
+nav button { background: none; border: none; color: var(--muted); font: inherit; padding: 10px 14px; cursor: pointer; border-bottom: 2px solid transparent; }
+nav button.on { color: var(--text); border-bottom-color: var(--accent); font-weight: 600; }
+.ask { display: flex; gap: 10px; }
+.ask input { flex: 1; padding: 12px 14px; font: inherit; color: var(--text); background: var(--panel); border: 1px solid var(--border); border-radius: 10px; }
+.ask input:focus { outline: 2px solid var(--accent); outline-offset: 1px; }
+.btn { background: var(--accent); color: var(--accent-text); border: none; border-radius: 10px; padding: 0 22px; font: inherit; font-weight: 600; cursor: pointer; min-height: 44px; }
+.btn:disabled { opacity: .55; cursor: default; }
+.btn.small { min-height: 30px; padding: 0 12px; font-size: 13px; border-radius: 8px; }
+.btn.ghost { background: var(--soft); color: var(--text); }
+.chips { display: flex; flex-wrap: wrap; gap: 8px; margin: 12px 0 18px; }
+.chip { background: var(--panel); border: 1px solid var(--border); color: var(--text); border-radius: 999px; padding: 6px 12px; font-size: 13px; cursor: pointer; }
+.chip:hover { border-color: var(--accent); }
+.grid { display: grid; grid-template-columns: 340px 1fr; gap: 18px; align-items: start; }
+@media (max-width: 920px) { .grid { grid-template-columns: 1fr; } }
+.card { background: var(--panel); border: 1px solid var(--border); border-radius: 12px; padding: 16px 18px; margin-bottom: 14px; }
+.card h2 { font-size: 12px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); margin: 0 0 12px; }
+.plan { margin: 0; padding-left: 20px; } .plan li { margin-bottom: 4px; }
+.step { display: grid; grid-template-columns: 22px 1fr auto; gap: 8px; padding: 8px 0; border-top: 1px solid var(--border); align-items: start; }
+.step:first-child { border-top: none; }
+.dot { width: 18px; height: 18px; border-radius: 50%; margin-top: 2px; display: grid; place-items: center; font-size: 11px; font-weight: 700; }
+.dot.run { border: 2px solid var(--accent); border-top-color: transparent; animation: spin .8s linear infinite; }
+.dot.ok { background: var(--ok); color: #fff; } .dot.err { background: var(--err); color: #fff; }
+@keyframes spin { to { transform: rotate(360deg); } }
+.step .t { font-weight: 600; font-size: 14px; } .step .a { color: var(--muted); font-size: 12.5px; }
+.step .v { font-variant-numeric: tabular-nums; font-weight: 600; font-size: 13px; }
+.headline { display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; }
+.big { font-size: 40px; font-weight: 700; letter-spacing: -1px; font-variant-numeric: tabular-nums; }
+.action { display: grid; grid-template-columns: 30px 1fr; gap: 12px; padding: 14px 0; border-top: 1px solid var(--border); }
+.action:first-of-type { border-top: none; }
+.rank { width: 28px; height: 28px; border-radius: 8px; background: var(--soft); display: grid; place-items: center; font-weight: 700; font-size: 13px; }
+.tag { display: inline-block; font-size: 11px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; padding: 2px 8px; border-radius: 6px; color: #fff; }
+.tag.leads { background: var(--leads); } .tag.retention { background: var(--retention); } .tag.pricing { background: var(--pricing); }
+.amt { font-weight: 700; font-size: 18px; font-variant-numeric: tabular-nums; margin-left: 8px; }
+.bar { height: 6px; background: var(--soft); border-radius: 99px; margin: 8px 0; overflow: hidden; }
+.bar > i { display: block; height: 100%; border-radius: 99px; }
+.bar > i.leads { background: var(--leads); } .bar > i.retention { background: var(--retention); } .bar > i.pricing { background: var(--pricing); }
+.muted { color: var(--muted); } .small { font-size: 13px; }
+blockquote { margin: 10px 0; padding: 10px 14px; background: var(--soft); border-left: 3px solid var(--accent); border-radius: 6px; font-size: 14px; }
+table { width: 100%; border-collapse: collapse; font-size: 13px; }
+th, td { text-align: left; padding: 6px 8px; border-bottom: 1px solid var(--border); font-variant-numeric: tabular-nums; }
+th { color: var(--muted); font-weight: 600; font-size: 12px; }
+.banner { padding: 10px 14px; border-radius: 10px; margin-bottom: 14px; font-size: 14px; background: var(--soft); border: 1px solid var(--border); }
+.banner.err { border-color: var(--err); color: var(--err); } .banner.warn { border-color: var(--warn); }
+.status-ok { color: var(--ok); font-weight: 600; } .status-pend { color: var(--warn); font-weight: 600; }
+details summary { cursor: pointer; color: var(--muted); font-size: 13px; }
+.kv { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-top: 8px; }
+.kv div { background: var(--soft); border-radius: 8px; padding: 8px 10px; } .kv b { display: block; font-size: 20px; }
+.empty { color: var(--muted); padding: 30px 0; text-align: center; }
+.hidden { display: none; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div>
+      <h1>Revenue Briefing Agent</h1>
+      <div class="sub">Observe → Reason → Decide → Act → Measure · chiropractic network, synthetic data</div>
+    </div>
+    <div><span class="pill" id="env">connecting…</span></div>
+  </header>
+
+  <nav>
+    <button class="on" data-tab="briefing">Briefing</button>
+    <button data-tab="approvals">Approvals</button>
+    <button data-tab="measure">Measure</button>
+  </nav>
+
+  <!-- BRIEFING -->
+  <section id="tab-briefing">
+    <form class="ask" id="askForm">
+      <input id="q" autocomplete="off" aria-label="Ask the agent" value="What should we focus on today to maximize revenue?">
+      <button class="btn" id="go" type="submit">Run agent</button>
+    </form>
+    <div class="chips" id="chips"></div>
+
+    <div id="banner"></div>
+    <div class="grid" id="main" hidden>
+      <div>
+        <div class="card" id="planCard" hidden><h2>Agent plan</h2><ol class="plan" id="plan"></ol></div>
+        <div class="card"><h2>Agent activity <span class="muted" id="clock"></span></h2><div id="steps"></div></div>
+      </div>
+      <div id="results"></div>
+    </div>
+  </section>
+
+  <section id="tab-approvals" hidden>
+    <div class="card"><h2>Outreach queue (staged by the agent, approved by staff)</h2><div id="queue" class="muted">Loading…</div></div>
+  </section>
+
+  <section id="tab-measure" hidden>
+    <div class="card"><h2>Did it work? Contacted vs. holdout</h2><div id="measure" class="muted">Loading…</div>
+      <p class="small muted">Each outreach batch is saved with a same-size holdout (next in line, not contacted). Right after a run this shows the baseline; re-run after real outreach to see the lift.</p></div>
+  </section>
+</div>
+
+<script>
+const $ = s => document.querySelector(s);
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const usd = n => '$' + Math.round(Number(n) || 0).toLocaleString();
+const LABEL = {
+  find_stale_leads: 'Size stale & dormant leads', find_top_lead_sources: 'Compare lead sources',
+  find_churn_risk_patients: 'Find lapsing patients', find_revenue_leaks: 'Price no-show losses',
+  diagnose_no_shows: 'Diagnose no-shows', diagnose_lead_response: 'Test response speed',
+  draft_outreach: 'Draft & stage outreach', rank_actions: 'Rank by $ impact'
+};
+const EXAMPLES = [
+  'What should we focus on today to maximize revenue?', 'How are our leads doing?',
+  'Why are we losing appointments to no-shows?', 'Which patients are about to leave and who should we call first?',
+  'Are we wasting money on marketing?', 'What is the weather today?'
+];
+let timer = null, clockTimer = null, running = false;
+
+async function api(path, opts) {
+  const r = await fetch(path, opts);
+  if (!r.ok) throw new Error((await r.text()) || r.statusText);
+  return r.json();
+}
+
+/* ---------- tabs ---------- */
+document.querySelectorAll('nav button').forEach(b => b.onclick = () => {
+  document.querySelectorAll('nav button').forEach(x => x.classList.toggle('on', x === b));
+  ['briefing', 'approvals', 'measure'].forEach(t => $('#tab-' + t).hidden = t !== b.dataset.tab);
+  if (b.dataset.tab === 'approvals') loadQueue();
+  if (b.dataset.tab === 'measure') loadMeasure();
+});
+
+/* ---------- ask ---------- */
+$('#chips').innerHTML = EXAMPLES.map(q => `<button type="button" class="chip">${esc(q)}</button>`).join('');
+$('#chips').onclick = e => { if (e.target.classList.contains('chip')) { $('#q').value = e.target.textContent; ask(); } };
+$('#askForm').onsubmit = e => { e.preventDefault(); ask(); };
+
+function reset() {
+  $('#banner').innerHTML = ''; $('#plan').innerHTML = ''; $('#planCard').hidden = true;
+  $('#steps').innerHTML = ''; $('#results').innerHTML = ''; $('#main').hidden = false;
+}
+
+async function ask() {
+  const question = $('#q').value.trim();
+  if (!question || running) return;
+  running = true; $('#go').disabled = true; $('#go').textContent = 'Running…';
+  reset();
+  $('#steps').innerHTML = '<div class="muted small" id="warm">Connecting to Databricks… the first run can take ~40s while the SQL warehouse wakes up.</div>';
+  const t0 = Date.now();
+  clockTimer = setInterval(() => $('#clock').textContent = '· ' + Math.round((Date.now() - t0) / 1000) + 's', 500);
+  try {
+    const { run_id } = await api('/api/ask', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ question }) });
+    let since = 0;
+    for (;;) {
+      await new Promise(r => setTimeout(r, 800));
+      const d = await api(`/api/runs/${run_id}?since=${since}`);
+      since = d.next; d.events.forEach(onEvent);
+      if (d.done) { finish(d); break; }
+    }
+  } catch (e) {
+    $('#banner').innerHTML = `<div class="banner err">Something went wrong: ${esc(e.message)}</div>`;
+  } finally {
+    clearInterval(clockTimer); running = false; $('#go').disabled = false; $('#go').textContent = 'Run agent';
+  }
+}
+
+/* ---------- live events ---------- */
+function onEvent(e) {
+  const w = $('#warm'); if (w) w.remove();
+  if (e.type === 'plan') {
+    $('#planCard').hidden = false;
+    $('#plan').innerHTML = e.steps.map(s => `<li>${esc(s)}</li>`).join('');
+  } else if (e.type === 'tool_call' && e.tool !== 'record_plan') {
+    const args = e.args && Object.keys(e.args).length ? Object.entries(e.args).map(([k, v]) => `${k}: ${v}`).join(', ') : '';
+    $('#steps').insertAdjacentHTML('beforeend',
+      `<div class="step" data-tool="${esc(e.tool)}" data-open="1"><span class="dot run"></span>
+       <div><div class="t">${esc(LABEL[e.tool] || e.tool)}</div><div class="a">${esc(args)}</div></div><span class="v"></span></div>`);
+  } else if (e.type === 'tool_result' && e.tool !== 'record_plan') {
+    const row = [...document.querySelectorAll(`.step[data-tool="${e.tool}"][data-open="1"]`)][0];
+    if (!row) return;
+    row.dataset.open = '0';
+    const o = e.output || {}, dot = row.querySelector('.dot');
+    dot.className = 'dot ' + (o.error ? 'err' : 'ok'); dot.textContent = o.error ? '!' : '✓';
+    const v = row.querySelector('.v'), a = row.querySelector('.a');
+    if (o.error) { a.textContent = o.error; }
+    else if (o.ranked_actions) { v.textContent = usd(o.total_estimated_impact_usd); }
+    else {
+      if (o.kind === 'action') { v.textContent = ''; }
+      else v.textContent = usd(o.estimated_impact_usd);
+      if (o.kind === 'diagnostic' || o.kind === 'action') a.textContent = o.recommendation;
+    }
+  } else if (e.type === 'fallback') {
+    $('#banner').innerHTML = `<div class="banner warn">The LLM was unavailable, so this is the fixed-pipeline briefing. (${esc(e.reason)})</div>`;
+  }
+}
+
+/* ---------- final result ---------- */
+function md(t) {
+  return esc(t).replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>').replace(/^#{1,3} (.+)$/gm, '<strong>$1</strong>').replace(/\n/g, '<br>');
+}
+
+function finish(d) {
+  if (d.error) { $('#banner').innerHTML = `<div class="banner err">${esc(d.error)}</div>`; return; }
+  const r = d.result; if (!r) return;
+  const outs = r.tool_outputs || [];
+  const analysis = outs.filter(o => !o.kind || o.kind === 'analysis');
+  const diag = outs.filter(o => o.kind === 'diagnostic');
+  const acts = outs.filter(o => o.kind === 'action');
+  let html = '';
+
+  if (!r.actions.length && !outs.length) {
+    html += `<div class="card"><h2>Agent reply</h2><div>${md(r.briefing_text)}</div></div>`;
+    $('#results').innerHTML = html; return;
+  }
+  if (r.actions.length) {
+    const max = Math.max(...r.actions.map(a => a.estimated_impact_usd), 1);
+    html += `<div class="card"><h2>Estimated opportunity</h2>
+      <div class="headline"><span class="big">${usd(r.total_estimated_impact_usd)}</span>
+      <span class="muted small">across ${r.actions.length} ranked action${r.actions.length > 1 ? 's' : ''} · assumptions in config/settings.yaml</span></div>
+      <div style="margin-top:8px">` + r.actions.map(a => `
+      <div class="action"><div class="rank">${a.rank}</div><div>
+        <div><span class="tag ${esc(a.focus)}">${esc(a.focus)}</span><span class="amt">${usd(a.estimated_impact_usd)}</span></div>
+        <div class="bar"><i class="${esc(a.focus)}" style="width:${Math.max(3, 100 * a.estimated_impact_usd / max)}%"></i></div>
+        <div class="small">${esc(a.recommendation)}</div></div></div>`).join('') + `</div></div>`;
+  }
+  if (diag.length) {
+    html += `<div class="card"><h2>Why is it happening?</h2>` + diag.map(o => `
+      <div class="step" style="grid-template-columns:1fr"><div><div class="t">${esc(LABEL[o.tool] || o.tool)}</div>
+      <div class="small">${esc(o.recommendation)}</div></div></div>`).join('') + `</div>`;
+  }
+  acts.forEach(o => {
+    const m = o.metrics || {}, q = o.queue || {}, t = o.targets || [];
+    const cols = t.length ? Object.keys(t[0]) : [];
+    let qline = '';
+    if (q.staged) qline = `<div class="small" style="margin:8px 0"><span class="status-pend">Queued for approval</span> · batch <code>${esc(q.batch_id)}</code> · ${q.newly_staged} new, ${q.already_pending} already pending
+      <button class="btn small" style="margin-left:10px" data-approve="${esc(q.batch_id)}">Approve batch</button></div>`;
+    else if (q.error) qline = `<div class="small muted">Could not stage in the queue: ${esc(q.error)}</div>`;
+    html += `<div class="card"><h2>Act now: ${esc(String(m.segment || '').replace(/_/g, ' '))} (${m.batch_size} of ${Number(m.segment_size).toLocaleString()})</h2>
+      <div class="small">${esc(o.recommendation)}</div>
+      <blockquote>${esc(o.message_template)}</blockquote>${qline}
+      <table><thead><tr>${cols.map(c => `<th>${esc(c.replace(/_/g, ' '))}</th>`).join('')}</tr></thead><tbody>` +
+      t.slice(0, 10).map(row => `<tr>${cols.map(c => `<td>${esc(row[c])}</td>`).join('')}</tr>`).join('') + `</tbody></table></div>`;
+  });
+  html += `<div class="card"><details><summary>Agent's written briefing</summary><div class="small" style="margin-top:10px">${md(r.briefing_text)}</div></details></div>`;
+  $('#results').innerHTML = html;
+}
+
+document.addEventListener('click', async e => {
+  const b = e.target.closest('[data-approve]'); if (!b) return;
+  b.disabled = true; b.textContent = 'Approving…';
+  try { await api('/api/queue/approve', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ batch_id: b.dataset.approve }) });
+        b.outerHTML = '<span class="status-ok">Approved ✓</span>'; }
+  catch (err) { b.disabled = false; b.textContent = 'Approve batch'; alert(err.message); }
+});
+
+/* ---------- approvals & measure tabs ---------- */
+async function loadQueue() {
+  const el = $('#queue');
+  try {
+    const { batches } = await api('/api/queue');
+    if (!batches.length) { el.innerHTML = '<div class="empty">Nothing queued yet. Run the agent on a question that asks who to contact.</div>'; return; }
+    el.innerHTML = `<table><thead><tr><th>Batch</th><th>Segment</th><th>People</th><th>Queued</th><th>Status</th><th></th></tr></thead><tbody>` +
+      batches.map(b => `<tr><td><code>${esc(b.batch_id)}</code></td><td>${esc(String(b.segment).replace(/_/g, ' '))}</td><td>${b.people}</td>
+      <td>${esc(String(b.first_queued).slice(0, 16).replace('T', ' '))}</td>
+      <td class="${b.status === 'approved' ? 'status-ok' : 'status-pend'}">${esc(b.status.replace('_', ' '))}</td>
+      <td>${b.status === 'pending_approval' ? `<button class="btn small" data-approve="${esc(b.batch_id)}">Approve</button>` : ''}</td></tr>`).join('') + '</tbody></table>';
+  } catch (e) { el.textContent = 'Could not load the queue: ' + e.message; }
+}
+
+async function loadMeasure() {
+  const el = $('#measure');
+  try {
+    const { results } = await api('/api/measure');
+    if (!results.length) { el.innerHTML = '<div class="empty">No outreach recorded yet.</div>'; return; }
+    el.innerHTML = results.map(r => `<div style="padding:12px 0;border-top:1px solid var(--border)">
+      <div><strong>${esc(String(r.segment).replace(/_/g, ' '))}</strong> <span class="muted small">· run ${esc(r.run_id.slice(0, 8))} · ${r.days_since}d ago · expected ${usd(r.expected_impact_usd)}</span></div>
+      <div class="kv"><div><span class="muted small">Contacted (${r.contacted_n})</span><b>${r.contacted_rate_pct}%</b></div>
+      <div><span class="muted small">Holdout (${r.holdout_n})</span><b>${r.holdout_rate_pct ?? '–'}%</b></div>
+      <div><span class="muted small">Lift</span><b>${r.lift_pts ?? '–'} pts</b></div></div>
+      <div class="small muted" style="margin-top:6px">${esc(r.verdict)}</div></div>`).join('');
+  } catch (e) { el.textContent = 'Could not load results: ' + e.message; }
+}
+
+api('/api/health').then(h => $('#env').textContent = `${h.model} · ${h.catalog}.${h.schema}`).catch(() => $('#env').textContent = 'offline');
+</script>
+</body>
+</html>

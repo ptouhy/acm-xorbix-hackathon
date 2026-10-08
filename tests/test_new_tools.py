@@ -219,3 +219,68 @@ def test_find_revenue_leaks_prices_only_trailing_no_shows_and_not_the_package_up
     assert out["metrics"]["no_show_rate_pct"] == 10.0
     assert "no upsell revenue is counted" in out["recommendation"]
     assert "date_sub(current_date(), 365)" in spark.queries[0]  # trailing window, not all history
+
+
+# ---- Retention by visit recency, and staging the call list -------------------
+
+from agent.tools import find_churn_risk_patients  # noqa: E402
+
+
+class WritableSpark(FakeSpark):
+    """FakeSpark that also records Delta appends (for the outreach_queue)."""
+
+    def __init__(self, responses, pending=()):
+        super().__init__(responses)
+        self.appended = []
+        self.pending = list(pending)
+        outer = self
+
+        class _Writer:
+            def format(self, *_): return self
+            def mode(self, *_): return self
+            def saveAsTable(self, table): outer.appended.append(table)
+
+        class _DF:
+            write = _Writer()
+
+        self._df = _DF()
+        self.catalog = NS(tableExists=lambda t: True)
+
+    def createDataFrame(self, rows, schema=None):
+        self.created_rows = rows
+        return self._df
+
+
+def test_find_churn_risk_patients_uses_visit_recency_not_the_score():
+    spark = FakeSpark({"lapsing_count": [NS(lapsing_count=5000, avg_visits=5.0)]})
+    out = find_churn_risk_patients(spark, "c", "s", S)
+    e = S["economics"]
+    assert out["estimated_impact_usd"] == round(
+        5000 * e["avg_visit_revenue"] * e["avg_recoverable_visits_per_reengaged_patient"] * e["churn_reengagement_rate"], 2)
+    assert "churn_risk_score" not in spark.queries[0] and "last_visit" in spark.queries[0]
+    assert out["metrics"]["window_days"] == "60-180 since last visit"
+
+
+def test_draft_outreach_stages_new_targets_and_skips_people_already_pending():
+    rows = [NS(patient_id=f"P{i}", location_id="L", tenure_months=3, past_visits=9, last_visit="2026-07-01")
+            for i in range(4)]
+    spark = WritableSpark({
+        "SELECT COUNT(*) AS n": [NS(n=5000)],
+        "target_id FROM": [NS(target_id="P0")],  # already pending
+        "LIMIT": rows,
+    })
+    out = draft_outreach(spark, "c", "s", S, segment="churn_risk_patients", limit=2)
+    assert out["queue"]["staged"] and out["queue"]["newly_staged"] == 1 and out["queue"]["already_pending"] == 1
+    assert [r[3] for r in spark.created_rows] == ["P1"] and spark.created_rows[0][5] == "pending_approval"
+    assert spark.appended == ["c.s.outreach_queue"]
+
+
+def test_staging_can_be_switched_off_and_never_breaks_the_briefing():
+    rows = [NS(patient_id="P1", location_id="L", tenure_months=3, past_visits=9, last_visit="2026-07-01")] * 2
+    spark = WritableSpark({"SELECT COUNT(*) AS n": [NS(n=5)], "LIMIT": rows})
+    off = {**S, "agent": {**S["agent"], "stage_outreach": False}}
+    assert draft_outreach(spark, "c", "s", off, segment="churn_risk_patients", limit=1)["queue"] == {"staged": False}
+    spark.catalog = NS(tableExists=lambda t: (_ for _ in ()).throw(RuntimeError("no permission")))
+    out = draft_outreach(spark, "c", "s", S, segment="churn_risk_patients", limit=1)
+    assert out["queue"]["staged"] is False and "no permission" in out["queue"]["error"]
+    assert out["targets"]  # the list is still returned

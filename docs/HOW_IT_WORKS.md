@@ -59,7 +59,7 @@ get a short reply with no tools; any LLM failure falls back to the fixed pipelin
 
 **Analysis** (each returns `estimated_impact_usd`)
 - `find_stale_leads`: open leads in an actionable window. Recent (3-30 days): count × eval revenue × conversion rate. Dormant (31-180 days): count × eval revenue × a lower win-back rate. Older leads are excluded as too cold.
-- `find_churn_risk_patients`: Active patients above the churn threshold; impact = count × visits × visit revenue × re-engagement rate.
+- `find_churn_risk_patients`: Active patients whose last visit was 60-180 days ago (they stopped coming), defined from visit history because the provided churn-risk score had no relationship to actual churn in this data; impact = count × visits × visit revenue × re-engagement rate.
 - `find_revenue_leaks`: prices the last 12 months of no-shows (count × measured revenue per visit × a recovery-rate assumption). Package Plan economics and marketing cost per conversion are reported but not priced, because the data shows no package revenue premium and marketing returns may not scale.
 - `find_top_lead_sources`: win rate by source (Converted / (Converted + Lost)), with a significance test. If no source stands out, it says so and prices nothing.
 
@@ -68,7 +68,7 @@ get a short reply with no tools; any LLM failure falls back to the fixed pipelin
 - `diagnose_lead_response`: win rate by speed of first response, with a two-proportion z-test (`min_z_score`).
 
 **Action**
-- `draft_outreach`: top N people for `stale_leads` or `churn_risk_patients`, a message template, and an equal-size holdout (the next people in priority order, not contacted).
+- `draft_outreach`: top N people for `stale_leads` or `churn_risk_patients`, a message template, and an equal-size holdout (the next people in priority order, not contacted). It also **stages the list in `outreach_queue` as `pending_approval`** (people already pending are skipped); staff approve it in the web UI.
 
 ---
 

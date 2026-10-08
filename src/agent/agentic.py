@@ -17,13 +17,15 @@ from typing import Any, Iterator
 
 from agent.briefing import BriefingResult, RevenueBriefingAgent, format_briefing, rank_actions
 from agent.llm import DatabricksLLM, LLMClient
-from agent.registry import RANK_TOOL, run_spark_tool, spark_tool_names, tool_specs
+from agent.registry import PLAN_TOOL, RANK_TOOL, run_spark_tool, spark_tool_names, tool_specs
 from agent.settings import load_settings
 
 SYSTEM_PROMPT = """You are the Revenue Briefing Agent for a chiropractic clinic.
 Your job: answer the staff member's question with a short, prioritized plan that has dollar impact.
 
 Rules:
+- First call record_plan with 2-5 short steps (which tools, why). Skip it only if the question is
+  off-topic, in which case call no tools at all.
 - Choose only the tools relevant to the question. A broad question ("what should we focus on?")
   needs the analysis tools; a narrow one ("how are our leads?") needs only the lead tools.
 - Tool kinds: ANALYSIS tools size an opportunity in dollars. DIAGNOSTIC tools explain WHY
@@ -37,7 +39,8 @@ Rules:
   tools and reply in one or two sentences saying what you can help with. Do not use any figures.
 - Call draft_outreach for the segment the question is about (patients leaving -> churn_risk_patients,
   leads -> stale_leads). On a broad question, use the top-ranked action that involves contacting
-  people. Include a short, personalized version of its message_template plus the
+  people. draft_outreach also stages the call list for staff approval; mention that it is queued
+  and pending approval. Include a short, personalized version of its message_template plus the
   first few targets, so staff can act immediately.
 - If a diagnostic tool ran, the answer MUST include a "Why" section quoting its specific findings
   (segment names and rates) before the action list. Do not replace findings with generic advice.
@@ -69,6 +72,10 @@ def _evidence_sections(outputs: list[dict]) -> str:
         m = o["metrics"]
         lines += ["", f"## Act now: {m['segment'].replace('_', ' ')} ({m['batch_size']} of {m['segment_size']:,})",
                   f"_{o['recommendation']}_", "", f"> {o['message_template']}", ""]
+        q = o.get("queue", {})
+        if q.get("staged"):
+            lines.insert(-1, f"**Queued for approval:** batch `{q['batch_id']}`, {q['newly_staged']} new "
+                             f"({q['already_pending']} already pending) in `outreach_queue`.")
         for t in o["targets"][:5]:
             ident = t.get("lead_id") or t.get("patient_id")
             detail = ", ".join(f"{k}={v}" for k, v in t.items() if k not in ("lead_id", "patient_id"))
@@ -103,7 +110,7 @@ class AgenticBriefingAgent:
             if event.type in ("final", "fallback"):
                 result = event.data["result"]
         assert result is not None
-        result.trace = [t for t in trace if t["type"] in ("tool_call", "tool_result")]
+        result.trace = [t for t in trace if t["type"] in ("plan", "tool_call", "tool_result")]
         return result
 
     def run_stream(self, question: str | None = None) -> Iterator[AgentEvent]:
@@ -114,6 +121,7 @@ class AgenticBriefingAgent:
             {"role": "user", "content": question},
         ]
         final_text: str | None = None
+        plan: list[str] = []
 
         try:
             for _ in range(self.max_steps):
@@ -134,7 +142,12 @@ class AgenticBriefingAgent:
                 })
                 for call in calls:
                     yield AgentEvent("tool_call", {"tool": call["name"], "args": call["arguments"]})
-                    output = self._execute(call["name"], call["arguments"], collected)
+                    if call["name"] == PLAN_TOOL:
+                        plan = [str(x) for x in (call["arguments"].get("steps") or [])][:6]
+                        yield AgentEvent("plan", {"steps": plan})
+                        output = {"ok": True, "plan_recorded": len(plan)}
+                    else:
+                        output = self._execute(call["name"], call["arguments"], collected)
                     yield AgentEvent("tool_result", {"tool": call["name"], "output": output})
                     messages.append({
                         "role": "tool",
@@ -163,7 +176,8 @@ class AgenticBriefingAgent:
 
         actions = rank_actions(outputs)
         total = sum(a["estimated_impact_usd"] for a in actions)
-        text = (final_text or format_briefing(question, actions, total)) + _evidence_sections(outputs)
+        plan_line = f"**Plan:** {' → '.join(plan)}\n\n" if plan else ""
+        text = plan_line + (final_text or format_briefing(question, actions, total)) + _evidence_sections(outputs)
         yield AgentEvent("final", {"result": BriefingResult(
             question=question,
             actions=actions,

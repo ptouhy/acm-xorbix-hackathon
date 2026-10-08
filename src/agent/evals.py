@@ -47,6 +47,12 @@ CASES: list[dict] = [
 ]
 
 
+PLAN = {"tool": "record_plan"}
+for _case in CASES:  # every tool-using case should start with a recorded plan
+    if not _case.get("no_tools"):
+        _case["must"] = [PLAN] + _case.get("must", [])
+
+
 def _matches(spec: dict, call: dict) -> bool:
     if "any" in spec:
         return call["tool"] in spec["any"]
@@ -63,11 +69,16 @@ def _label(spec: dict) -> str:
     return spec["tool"] + (f"({', '.join(f'{k}={v}' for k, v in args.items())})" if args else "")
 
 
-def check_case(case: dict, calls: list[dict], fell_back: bool = False, tool_errors: int = 0) -> list[str]:
+# Rejections the agent is designed to recover from (it then runs an analysis tool). Not failures.
+RECOVERABLE_ERRORS = ("Nothing to rank yet",)
+
+
+def check_case(case: dict, calls: list[dict], fell_back: bool | str = False, tool_errors: list[str] | None = None) -> list[str]:
     """Return a list of failure reasons (empty = pass)."""
     failures = []
     if fell_back:
-        failures.append("fell back to deterministic briefing")
+        reason = f": {str(fell_back)[:90]}" if isinstance(fell_back, str) else ""
+        failures.append(f"fell back to deterministic briefing{reason}")
     if case.get("no_tools"):
         if calls:
             failures.append("called tools on an off-topic question")
@@ -78,21 +89,23 @@ def check_case(case: dict, calls: list[dict], fell_back: bool = False, tool_erro
     for spec in case.get("must_not", []):
         if any(_matches(spec, c) for c in calls):
             failures.append(f"called forbidden {_label(spec)}")
-    if tool_errors:
-        failures.append(f"{tool_errors} tool error(s)")
+    for msg in tool_errors or []:
+        failures.append(f"tool error: {msg[:90]}")
     return failures
 
 
-def calls_from_events(events: Iterable[Any]) -> tuple[list[dict], bool, int]:
-    """Pull (tool calls, fell_back, tool_errors) out of AgentEvents."""
-    calls, fell_back, errors = [], False, 0
+def calls_from_events(events: Iterable[Any]) -> tuple[list[dict], bool | str, list[str]]:
+    """Pull (tool calls, fallback reason or False, unrecovered tool error messages) out of AgentEvents."""
+    calls, fell_back, errors = [], False, []
     for e in events:
         if e.type == "tool_call":
             calls.append({"tool": e.data["tool"], "args": e.data.get("args") or {}})
         elif e.type == "tool_result" and "error" in e.data["output"]:
-            errors += 1
+            msg = str(e.data["output"]["error"])
+            if not msg.startswith(RECOVERABLE_ERRORS):
+                errors.append(msg)
         elif e.type == "fallback":
-            fell_back = True
+            fell_back = e.data.get("reason") or True
     return calls, fell_back, errors
 
 
@@ -116,7 +129,7 @@ def run_eval(make_agent: Callable[[], Any], cases: list[dict], runs: int,
         results.append({
             "case": case["id"], "question": case["question"], "runs": runs, "passes": passes,
             "pass_rate": round(passes / runs, 2),
-            "top_failures": failure_counts.most_common(3),
+            "top_failures": "; ".join(f"{m} (x{n})" for m, n in failure_counts.most_common(3)),
         })
     return results
 

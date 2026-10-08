@@ -61,8 +61,9 @@ _SPARK_TOOLS: dict[str, tuple[Callable[..., dict], str, dict]] = {
     ),
     "find_churn_risk_patients": (
         find_churn_risk_patients,
-        "ANALYSIS / RETENTION. Counts Active patients with a high churn-risk score and estimates the "
-        "revenue recoverable by re-engaging them. Use for retention, dropout, or lapsed-patient questions.",
+        "ANALYSIS / RETENTION. Counts Active patients who have stopped coming (last visit 60-180 days "
+        "ago) and estimates the revenue recoverable by re-engaging them. Use for retention, dropout, "
+        "or lapsing-patient questions.",
         _NO_ARGS,
     ),
     "find_revenue_leaks": (
@@ -87,7 +88,8 @@ _SPARK_TOOLS: dict[str, tuple[Callable[..., dict], str, dict]] = {
     ),
     "draft_outreach": (
         draft_outreach,
-        "ACTION. Builds today's prioritized contact list plus a message template for ONE segment. "
+        "ACTION. Builds today's prioritized contact list plus a message template for ONE segment, and "
+        "stages it in the outreach_queue table as pending staff approval. "
         "Pick the segment the question is about: 'churn_risk_patients' for patients leaving / "
         "retention / lapsing; 'stale_leads' for leads / new-patient follow-up. Use when staff ask "
         "who to call, what to do next, or for outreach copy.",
@@ -96,6 +98,7 @@ _SPARK_TOOLS: dict[str, tuple[Callable[..., dict], str, dict]] = {
 }
 
 RANK_TOOL = "rank_actions"
+PLAN_TOOL = "record_plan"
 
 
 def tool_specs() -> list[dict]:
@@ -107,6 +110,21 @@ def tool_specs() -> list[dict]:
         }
         for name, (_, desc, params) in _SPARK_TOOLS.items()
     ]
+    specs.append({
+        "type": "function",
+        "function": {
+            "name": PLAN_TOOL,
+            "description": (
+                "Record your plan BEFORE calling any other tool: 2-5 short steps saying which "
+                "tools you will use and why. Call this first, once."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {"steps": {"type": "array", "items": {"type": "string"}}},
+                "required": ["steps"],
+            },
+        },
+    })
     specs.append({
         "type": "function",
         "function": {

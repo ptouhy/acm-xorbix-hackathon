@@ -45,7 +45,9 @@ print(f"Model: {endpoint} | {len(CASES)} cases x {runs} runs")
 
 
 def make_agent():
-    return AgenticBriefingAgent(spark, catalog=catalog, schema=schema, llm=DatabricksLLM(endpoint))  # noqa: F821
+    agent = AgenticBriefingAgent(spark, catalog=catalog, schema=schema, llm=DatabricksLLM(endpoint))  # noqa: F821
+    agent.settings["agent"]["stage_outreach"] = False  # evals must not fill the real outreach queue
+    return agent
 
 
 def progress(case_id, i, failures):
@@ -54,16 +56,6 @@ def progress(case_id, i, failures):
 
 results = run_eval(make_agent, CASES, runs, on_run=progress)
 overall = overall_pass_rate(results)
-
-# COMMAND ----------
-
-print(f"\n=== Tool-selection pass rate ({endpoint}) ===")
-for r in results:
-    print(f"{r['case']:>17}: {r['passes']}/{r['runs']}  {r['top_failures'][0][0] if r['top_failures'] else ''}")
-print(f"\nOVERALL: {overall:.0%}")
-
-import pandas as pd
-display(pd.DataFrame(results))  # noqa: F821
 
 # COMMAND ----------
 
@@ -83,3 +75,13 @@ try:
     print("Logged to MLflow.")
 except Exception as exc:
     print(f"MLflow logging skipped (non-fatal): {exc}")
+
+# COMMAND ----------
+
+print(f"\n=== Tool-selection pass rate ({endpoint}) ===")
+for r in results:
+    print(f"{r['case']:>17}: {r['passes']}/{r['runs']}  {r['top_failures']}")
+print(f"\nOVERALL: {overall:.0%}")
+
+import pandas as pd
+display(pd.DataFrame(results))  # noqa: F821

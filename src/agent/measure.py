@@ -5,7 +5,7 @@ STEP EXPLANATION:
   For every recorded batch we compare the people the agent said to contact against the
   holdout (next-in-line, same size, NOT contacted):
     stale_leads          -> outcome = lead converted
-    churn_risk_patients  -> outcome = patient still Active (retained)
+    churn_risk_patients  -> outcome = patient has a visit after the recommendation
   lift = contacted rate - holdout rate. Outcomes are only judged after min_followup_days;
   before that we report the baseline. Re-run after the outreach window to get a verdict.
 """
@@ -18,9 +18,15 @@ from typing import Any
 from agent.settings import load_settings
 from agent.tracking import LEDGER_TABLE
 
+# segment -> (source relation, key column, outcome expression, where {c}/{s} = catalog/schema)
 _OUTCOME_SQL = {
-    "stale_leads": ("leads", "lead_id", "CASE WHEN x.converted_flag THEN 1 ELSE 0 END"),
-    "churn_risk_patients": ("patients", "patient_id", "CASE WHEN x.status = 'Active' THEN 1 ELSE 0 END"),
+    "stale_leads": ("{c}.{s}.leads", "lead_id", "CASE WHEN x.converted_flag THEN 1 ELSE 0 END"),
+    # outcome = the patient came back: has a visit after the recommendation
+    "churn_risk_patients": (
+        "(SELECT patient_id, MAX(visit_date) AS last_visit FROM {c}.{s}.visits GROUP BY patient_id)",
+        "patient_id",
+        "CASE WHEN x.last_visit > to_date(r.created_at) THEN 1 ELSE 0 END",
+    ),
 }
 
 
@@ -36,7 +42,7 @@ def measure_outcomes(spark: Any, catalog: str, schema: str, settings: dict | Non
         rows = spark.sql(f"""
             SELECT r.run_id, r.cohort, MIN(r.created_at) AS created_at, COUNT(*) AS n,
                    SUM({outcome}) AS outcomes, SUM(r.expected_impact_usd) AS expected_usd
-            FROM {ledger} r JOIN {catalog}.{schema}.{table} x ON x.{key} = r.target_id
+            FROM {ledger} r LEFT JOIN {table.format(c=catalog, s=schema)} x ON x.{key} = r.target_id
             WHERE r.segment = '{segment}'
             GROUP BY r.run_id, r.cohort
         """).collect()

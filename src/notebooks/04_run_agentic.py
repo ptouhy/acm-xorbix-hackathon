@@ -55,9 +55,13 @@ for event in agent.run_stream(question):
     if event.type == "tool_call":
         args = event.data.get("args")
         print(f"→ calling {event.data['tool']}" + (f" {args}" if args else ""))
+    elif event.type == "plan":
+        print("📋 Plan: " + " → ".join(event.data["steps"]))
     elif event.type == "tool_result":
         out = event.data["output"]
-        if "error" in out:
+        if event.data["tool"] == "record_plan":
+            pass
+        elif "error" in out:
             print(f"  ✗ {event.data['tool']}: {out['error']}")
         elif "ranked_actions" in out:
             print(f"  ✓ ranked {len(out['ranked_actions'])} actions, total ${out['total_estimated_impact_usd']:,.0f}")

@@ -23,15 +23,31 @@ question → LLM (Databricks Model Serving) ⇄ tools (Spark SQL on Unity Catalo
 
 | Step | Tools |
 |------|-------|
+| **Plan** | The agent first records a short plan (`record_plan`), shown in the trace |
 | **Observe** (size the opportunity in $) | `find_stale_leads`, `find_top_lead_sources`, `find_churn_risk_patients`, `find_revenue_leaks` |
 | **Reason** (why is it happening?) | `diagnose_no_shows`, `diagnose_lead_response` — they say so when a pattern is within random variation |
 | **Decide** | `rank_actions` ranks the analysis results by estimated dollar impact (totals are computed in code, not by the LLM) |
-| **Act** | `draft_outreach` builds today's prioritized contact list + message for stale leads or at-risk patients |
+| **Act** | `draft_outreach` builds today's prioritized contact list + message and **stages it in `outreach_queue` as `pending_approval`** (a human approves) |
 | **Measure** | MLflow run logs + `agent_recommendations` ledger (contacted vs. same-size holdout) + `src/notebooks/05_measure_outcomes.py` |
 
 - The LLM **chooses** which tools to call: broad questions use several, narrow ones fewer, off-topic ones none.
 - All dollar assumptions and thresholds live in `config/settings.yaml`, not in code.
 - Details: [docs/HOW_IT_WORKS.md](docs/HOW_IT_WORKS.md) · Pitch: [docs/PITCH.md](docs/PITCH.md)
+
+---
+
+## Web UI (local)
+
+A presentation layer for the agent: ask a question, watch the plan and tool calls live, see ranked actions, the call list, approve staged outreach, and view Measure results. It runs the same agent code on a SQL warehouse (no Spark needed).
+
+```bash
+databricks auth login --host https://<your-workspace>.cloud.databricks.com   # once
+.venv/bin/pip install "databricks-sdk[openai]" fastapi uvicorn              # inside your venv
+PYTHONPATH=src .venv/bin/uvicorn app.server:app --port 8000
+# open http://localhost:8000
+```
+
+The first run can take ~40 seconds while the serverless SQL warehouse starts. Set `DATABRICKS_WAREHOUSE_ID` to pick a specific warehouse (default: the first one in your workspace).
 
 ---
 
@@ -135,6 +151,10 @@ src/
     tracking.py                 # MLflow logging + recommendation ledger
     measure.py                  # contacted-vs-holdout outcome check
     evals.py                    # tool-selection eval cases + scoring
+    warehouse.py                # Spark-compatible session on a SQL warehouse (used by the web UI)
+  app/
+    server.py                   # FastAPI backend for the web UI
+    static/index.html           # single-page UI (no build step)
   notebooks/                    # exploration (02), fixed pipeline (03), agent demo (04), measure (05), eval (06)
 sample_data/
   generate_synthetic_data.py    # synthetic-data generator (8 Unity Catalog tables)

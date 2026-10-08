@@ -19,7 +19,8 @@ thresholds:
   stale_lead_days: 3  # a lead is 'stale' once it has been open this long ...
   stale_lead_max_days: 30  # ... until this age; older open leads are 'dormant' (win-back, lower odds)
   dormant_lead_max_days: 180  # open leads older than this are too cold to count
-  high_churn_risk: 0.75
+  lapsing_min_days: 60  # an Active patient is 'lapsing' if their last visit was this long ago ...
+  lapsing_max_days: 180  # ... but not longer than this (older = effectively gone)
   slow_response_hours: 24
   min_segment_appts: 500  # ignore tiny segments in no-show diagnostics
   min_followup_days: 7  # outcomes are only judged after this many days since the recommendation
@@ -31,4 +32,5 @@ agent:
   default_question: "What should we focus on today to maximize revenue?"
   llm_endpoint: databricks-meta-llama-3-3-70b-instruct  # Foundation Model serving endpoint
   temperature: 0.1
+  stage_outreach: true  # draft_outreach also stages the call list in outreach_queue (pending approval)
   max_steps: 8  # max LLM turns before falling back to ranked tool output
